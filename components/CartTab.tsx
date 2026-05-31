@@ -4,7 +4,8 @@ import { useCartStore } from "../store/cartStore";
 const formatPrice = (n: number) => "$" + n.toLocaleString("es-CO");
 
 export default function CartTab() {
-  const { items, updateQuantity, removeItem } = useCartStore();
+  const items = useCartStore((s) => s.items);
+  const updateQuantity = useCartStore((s) => s.updateQuantity);
 
   if (items.length === 0) {
     return (

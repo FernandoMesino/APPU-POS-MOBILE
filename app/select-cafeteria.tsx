@@ -1,19 +1,19 @@
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  FlatList,
-  SafeAreaView,
-} from "react-native";
+import { View, Text, TouchableOpacity, FlatList } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuthStore } from "../store/authStore";
 
 export default function SelectCafeteriaScreen() {
-  const { cafeterias, selectCafeteria, username } = useAuthStore();
+  const { cafeterias, selectCafeteria, logout, username } = useAuthStore();
 
-  const handleSelect = (cafeteria: { id: string; nombre: string }) => {
-    selectCafeteria(cafeteria);
+  const handleSelect = async (cafeteria: { id: string; nombre: string }) => {
+    await selectCafeteria(cafeteria);
     router.replace("/(app)/pos");
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    router.replace("/login");
   };
 
   return (
@@ -43,12 +43,22 @@ export default function SelectCafeteriaScreen() {
           )}
           ListEmptyComponent={
             <View className="items-center mt-20">
-              <Text className="text-white/40 text-base">
+              <Text className="text-white/40 text-base text-center">
                 No tienes cafeterías asignadas
               </Text>
             </View>
           }
         />
+      </View>
+
+      {/* Cerrar sesión */}
+      <View className="px-6 pb-6">
+        <TouchableOpacity
+          onPress={handleLogout}
+          className="border border-white/20 rounded-2xl py-4 items-center active:opacity-70"
+        >
+          <Text className="text-white/70 font-semibold">Cerrar sesión</Text>
+        </TouchableOpacity>
       </View>
     </SafeAreaView>
   );

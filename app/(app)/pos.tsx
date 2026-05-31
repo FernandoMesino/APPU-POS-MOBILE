@@ -5,21 +5,20 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   ScrollView,
   StatusBar,
+  Keyboard,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
 import {
   getProductos,
   getCajas,
-  getMetodosPago,
   type Producto,
   type Caja,
-  type MetodoPago,
 } from "../../services/api";
 import ProductCard from "../../components/ProductCard";
 import CartTab from "../../components/CartTab";
@@ -30,8 +29,14 @@ type Tab = "ventas" | "carrito" | "caja";
 const COLS = 3;
 
 export default function PosScreen() {
-  const { selectedCafeteria, username, logout } = useAuthStore();
-  const { items, total, addItem, clearCart } = useCartStore();
+  // Selectores individuales: cada valor se suscribe por separado, evitando
+  // re-renders de toda la pantalla cuando cambia una parte no usada del store.
+  const selectedCafeteria = useAuthStore((s) => s.selectedCafeteria);
+  const username = useAuthStore((s) => s.username);
+  const items = useCartStore((s) => s.items);
+  const total = useCartStore((s) => s.total);
+  const addItem = useCartStore((s) => s.addItem);
+  const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<Tab>("ventas");
   const [search, setSearch] = useState("");
@@ -40,7 +45,6 @@ export default function PosScreen() {
   const [categoriaActiva, setCategoriaActiva] = useState<string | null>(null);
   const [cajas, setCajas] = useState<Caja[]>([]);
   const [cajaActiva, setCajaActiva] = useState<Caja | null>(null);
-  const [metodosPago, setMetodosPago] = useState<MetodoPago[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [lastOrder, setLastOrder] = useState<string | null>(null);
@@ -54,20 +58,14 @@ export default function PosScreen() {
     if (!selectedCafeteria) return;
     setLoading(true);
     try {
-      const [prodRes, cajaRes, metodosRes] = await Promise.all([
+      const [prodRes, cajaRes] = await Promise.all([
         getProductos(selectedCafeteria.id),
         getCajas(selectedCafeteria.id),
-        getMetodosPago(selectedCafeteria.id),
       ]);
       setProductos(prodRes.data.productos);
       setCategorias(prodRes.data.categorias);
       setCajas(cajaRes.data.cajas);
       if (cajaRes.data.cajas.length > 0) setCajaActiva(cajaRes.data.cajas[0]);
-      setMetodosPago(
-        metodosRes.data.metodos_pago.length > 0
-          ? metodosRes.data.metodos_pago
-          : [{ id: "efectivo", nombre: "Efectivo" }]
-      );
     } catch {
       Alert.alert("Error", "No se pudieron cargar los productos");
     } finally {
@@ -125,6 +123,8 @@ export default function PosScreen() {
               placeholderTextColor="#9ca3af"
               value={search}
               onChangeText={setSearch}
+              returnKeyType="search"
+              onSubmitEditing={() => Keyboard.dismiss()}
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => setSearch("")}>
@@ -188,6 +188,8 @@ export default function PosScreen() {
           numColumns={COLS}
           contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}
           columnWrapperStyle={{ justifyContent: "flex-start" }}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => (
             <View style={{ flex: 1 / COLS }}>
               <ProductCard
@@ -211,7 +213,7 @@ export default function PosScreen() {
   // ─── UI ─────────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
+    <SafeAreaView edges={["top"]} className="flex-1 bg-appu-dark">
       <StatusBar barStyle="light-content" backgroundColor="#1a1a4e" />
 
       {/* Header */}
@@ -269,7 +271,7 @@ export default function PosScreen() {
       </View>
 
       {/* Content */}
-      <View className="flex-1">
+      <View className="flex-1 bg-gray-50">
         {activeTab === "ventas" && renderVentasContent()}
         {activeTab === "carrito" && <CartTab />}
         {activeTab === "caja" && (
@@ -282,7 +284,10 @@ export default function PosScreen() {
 
       {/* Barra inferior — siempre visible en VENTAS y CARRITO */}
       {activeTab !== "caja" && (
-        <View className="bg-white border-t border-gray-100 px-4 pt-3 pb-6 shadow-lg">
+        <View
+          className="bg-white border-t border-gray-100 px-4 pt-3 shadow-lg"
+          style={{ paddingBottom: insets.bottom + 12 }}
+        >
           <View className="flex-row items-center justify-between mb-3">
             <Text className="text-appu-text text-base font-semibold">Total:</Text>
             <Text className="text-appu-text text-xl font-bold">
@@ -311,7 +316,6 @@ export default function PosScreen() {
         visible={checkoutVisible}
         onClose={() => setCheckoutVisible(false)}
         onSuccess={handleOrdenExitosa}
-        metodosPago={metodosPago}
         cajaActiva={cajaActiva ? { codigo: cajaActiva.codigo, nombre: cajaActiva.nombre } : null}
       />
     </SafeAreaView>

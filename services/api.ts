@@ -1,5 +1,7 @@
 import axios from "axios";
 import * as SecureStore from "expo-secure-store";
+import { router } from "expo-router";
+import { useAuthStore } from "../store/authStore";
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8000/api/mobile";
 const IS_DEV = process.env.EXPO_PUBLIC_ENV === "development";
@@ -23,10 +25,10 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// Log de errores en desarrollo
+// Manejo de errores: log en dev + cierre de sesión si el token expiró
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (IS_DEV) {
       console.error(
         `[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
@@ -34,6 +36,14 @@ api.interceptors.response.use(
         error.response?.data
       );
     }
+
+    // 401 en cualquier endpoint que no sea el login = token expirado/inválido
+    const isLoginRequest = error.config?.url?.includes("/auth/login");
+    if (error.response?.status === 401 && !isLoginRequest) {
+      await useAuthStore.getState().logout();
+      router.replace("/login");
+    }
+
     return Promise.reject(error);
   }
 );
@@ -69,9 +79,11 @@ export type Caja = {
   estado: string;
 };
 
-export type MetodoPago = {
-  id: string;
-  nombre: string;
+export type DatosTransferencia = {
+  banco: string;
+  numero_cuenta: string;
+  tipo_cuenta: string;
+  qr_url: string;
 };
 
 export type CartItem = {
@@ -89,9 +101,9 @@ export const getProductos = (cafeteria_id: string) =>
 export const getCajas = (cafeteria_id: string) =>
   api.get<{ cajas: Caja[] }>(`/ventas/cajas/?cafeteria_id=${cafeteria_id}`);
 
-export const getMetodosPago = (cafeteria_id: string) =>
-  api.get<{ metodos_pago: MetodoPago[] }>(
-    `/ventas/metodos-pago/?cafeteria_id=${cafeteria_id}`
+export const getDatosTransferencia = (cafeteria_id: string) =>
+  api.get<{ transferencia: DatosTransferencia | null }>(
+    `/ventas/datos-transferencia/?cafeteria_id=${cafeteria_id}`
   );
 
 export const crearOrden = (payload: {

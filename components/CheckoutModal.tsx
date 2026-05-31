@@ -11,15 +11,15 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Image } from "expo-image";
 import { useCartStore } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
-import { crearOrden, MetodoPago } from "../services/api";
+import { crearOrden, getDatosTransferencia, DatosTransferencia } from "../services/api";
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   onSuccess: (idOrden: string) => void;
-  metodosPago: MetodoPago[];
   cajaActiva: { codigo: string; nombre: string } | null;
 };
 
@@ -29,17 +29,36 @@ export default function CheckoutModal({
   visible,
   onClose,
   onSuccess,
-  metodosPago,
   cajaActiva,
 }: Props) {
-  const { items, total, clearCart } = useCartStore();
-  const { selectedCafeteria } = useAuthStore();
+  const items = useCartStore((s) => s.items);
+  const total = useCartStore((s) => s.total);
+  const clearCart = useCartStore((s) => s.clearCart);
+  const selectedCafeteria = useAuthStore((s) => s.selectedCafeteria);
 
   const [nombre, setNombre] = useState("");
   const [documento, setDocumento] = useState("");
   const [celular, setCelular] = useState("");
-  const [metodoPago, setMetodoPago] = useState(metodosPago[0]?.nombre ?? "Efectivo");
+  const [metodoPago, setMetodoPago] = useState("Efectivo");
   const [loading, setLoading] = useState(false);
+  const [datosTransf, setDatosTransf] = useState<DatosTransferencia | null>(null);
+  const [loadingQR, setLoadingQR] = useState(false);
+  const [qrCargado, setQrCargado] = useState(false);
+
+  const seleccionarMetodo = async (metodo: string) => {
+    setMetodoPago(metodo);
+    if (metodo !== "Transferencia" || qrCargado || !selectedCafeteria) return;
+    setLoadingQR(true);
+    try {
+      const { data } = await getDatosTransferencia(selectedCafeteria.id);
+      setDatosTransf(data.transferencia);
+    } catch {
+      setDatosTransf(null);
+    } finally {
+      setLoadingQR(false);
+      setQrCargado(true);
+    }
+  };
 
   const handleFacturar = async () => {
     if (!selectedCafeteria) return;
@@ -136,29 +155,65 @@ export default function CheckoutModal({
               <Text className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-3">
                 Método de pago
               </Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-6">
-                <View className="flex-row gap-2 pr-4">
-                  {metodosPago.map((m) => (
-                    <TouchableOpacity
-                      key={m.id}
-                      onPress={() => setMetodoPago(m.nombre)}
-                      className={`px-4 py-2 rounded-full border ${
-                        metodoPago === m.nombre
-                          ? "bg-appu-blue border-appu-blue"
-                          : "bg-white border-gray-200"
+              <View className="flex-row gap-3 mb-4">
+                {["Efectivo", "Transferencia"].map((m) => (
+                  <TouchableOpacity
+                    key={m}
+                    onPress={() => seleccionarMetodo(m)}
+                    className={`flex-1 py-3 rounded-xl border items-center ${
+                      metodoPago === m
+                        ? "bg-appu-blue border-appu-blue"
+                        : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <Text
+                      className={`text-sm font-semibold ${
+                        metodoPago === m ? "text-white" : "text-gray-600"
                       }`}
                     >
-                      <Text
-                        className={`text-sm font-medium ${
-                          metodoPago === m.nombre ? "text-white" : "text-gray-600"
-                        }`}
-                      >
-                        {m.nombre}
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* QR de transferencia */}
+              {metodoPago === "Transferencia" && (
+                <View className="bg-gray-50 rounded-2xl p-4 mb-6 items-center">
+                  {loadingQR ? (
+                    <ActivityIndicator color="#2f2c59" />
+                  ) : datosTransf?.qr_url ? (
+                    <>
+                      <Text className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-3">
+                        Escanea para pagar
                       </Text>
-                    </TouchableOpacity>
-                  ))}
+                      <Image
+                        source={{ uri: datosTransf.qr_url }}
+                        style={{ width: 220, height: 220 }}
+                        contentFit="contain"
+                        transition={150}
+                        cachePolicy="memory-disk"
+                      />
+                      {!!datosTransf.banco && (
+                        <View className="mt-3 items-center">
+                          <Text className="text-appu-text font-semibold text-sm">
+                            {datosTransf.banco}
+                          </Text>
+                          {!!datosTransf.numero_cuenta && (
+                            <Text className="text-gray-500 text-xs mt-0.5">
+                              {datosTransf.tipo_cuenta} · {datosTransf.numero_cuenta}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  ) : (
+                    <Text className="text-gray-400 text-sm text-center">
+                      El comercio aún no ha registrado un QR de transferencia.
+                    </Text>
+                  )}
                 </View>
-              </ScrollView>
+              )}
 
               {/* Botones */}
               <View className="flex-row gap-3">
