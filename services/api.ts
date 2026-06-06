@@ -70,6 +70,7 @@ export type Producto = {
   categoria: string;
   foto_url: string;
   descripcion: string;
+  codigo_barras: string;
 };
 
 export type Caja = {
@@ -105,6 +106,29 @@ export const getDatosTransferencia = (cafeteria_id: string) =>
   api.get<{ transferencia: DatosTransferencia | null }>(
     `/ventas/datos-transferencia/?cafeteria_id=${cafeteria_id}`
   );
+
+export type OrdenDia = {
+  id_orden: string;
+  monto: number;
+  metodo_pago: string;
+  nombre_cliente: string;
+  fecha_creacion: string;
+  caja: string;
+  vendedor: string;
+  productos: { producto?: string; cantidad?: number; precio?: number }[];
+};
+
+export const getOrdenesDia = (cafeteria_id: string, caja_codigo?: string) =>
+  api.get<{ ordenes: OrdenDia[]; total_dia: number; cantidad: number }>(
+    `/ventas/ordenes-dia/?cafeteria_id=${cafeteria_id}` +
+      (caja_codigo ? `&caja_codigo=${encodeURIComponent(caja_codigo)}` : "")
+  );
+
+export const actualizarPrecioProducto = (id_producto: string, precio: number) =>
+  api.post<{ success: boolean; precio: number }>("/ventas/producto/precio/", {
+    id_producto,
+    precio,
+  });
 
 export const crearOrden = (payload: {
   cafeteria_id: string;

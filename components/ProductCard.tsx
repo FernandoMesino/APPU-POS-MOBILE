@@ -5,15 +5,18 @@ type Props = {
   producto: Producto;
   cantidad: number;
   onPress: () => void;
+  onLongPress?: () => void;
 };
 
 const formatPrice = (n: number) =>
   "$" + n.toLocaleString("es-CO");
 
-export default function ProductCard({ producto, cantidad, onPress }: Props) {
+export default function ProductCard({ producto, cantidad, onPress, onLongPress }: Props) {
   return (
     <TouchableOpacity
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
       className="bg-white rounded-2xl p-3 flex-1 mx-1 mb-3 shadow-sm active:opacity-75"
       style={{ minHeight: 110 }}
     >

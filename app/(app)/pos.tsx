@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -10,19 +10,26 @@ import {
   ScrollView,
   StatusBar,
   Keyboard,
+  Modal,
+  Pressable,
+  Vibration,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { useAuthStore } from "../../store/authStore";
 import { useCartStore } from "../../store/cartStore";
 import {
   getProductos,
   getCajas,
+  getOrdenesDia,
   type Producto,
   type Caja,
+  type OrdenDia,
 } from "../../services/api";
 import ProductCard from "../../components/ProductCard";
 import CartTab from "../../components/CartTab";
 import CheckoutModal from "../../components/CheckoutModal";
+import EditPriceModal from "../../components/EditPriceModal";
 
 type Tab = "ventas" | "carrito" | "caja";
 
@@ -33,6 +40,7 @@ export default function PosScreen() {
   // re-renders de toda la pantalla cuando cambia una parte no usada del store.
   const selectedCafeteria = useAuthStore((s) => s.selectedCafeteria);
   const username = useAuthStore((s) => s.username);
+  const logout = useAuthStore((s) => s.logout);
   const items = useCartStore((s) => s.items);
   const total = useCartStore((s) => s.total);
   const addItem = useCartStore((s) => s.addItem);
@@ -48,11 +56,114 @@ export default function PosScreen() {
   const [loading, setLoading] = useState(true);
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [lastOrder, setLastOrder] = useState<string | null>(null);
+  const [editandoProducto, setEditandoProducto] = useState<Producto | null>(null);
+
+  // Menús del header
+  const [cajaMenuVisible, setCajaMenuVisible] = useState(false);
+  const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+
+  // ─── Pistola lectora (Bluetooth HID) ────────────────────────────────────────
+  // La pistola se comporta como un teclado: "teclea" el código y manda un Enter.
+  // Un TextInput invisible y siempre enfocado captura el código sin abrir el
+  // teclado en pantalla (showSoftInputOnFocus={false}).
+  const scanRef = useRef<TextInput>(null);
+  const [scanBuffer, setScanBuffer] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+
+  const anyModalOpen =
+    checkoutVisible ||
+    !!editandoProducto ||
+    cajaMenuVisible ||
+    profileMenuVisible;
+
+  // El escáner está activo solo en VENTAS, sin modales abiertos, ya cargado, y
+  // mientras el cajero no esté escribiendo manualmente en el buscador.
+  const scannerEnabled =
+    activeTab === "ventas" && !anyModalOpen && !loading && !searchFocused;
+
+  // Ref espejo para consultarlo dentro de callbacks sin closures obsoletos.
+  const scannerEnabledRef = useRef(scannerEnabled);
+  scannerEnabledRef.current = scannerEnabled;
+
+  // Enfoca el input oculto cuando el escáner pasa a estar activo.
+  useEffect(() => {
+    if (!scannerEnabled) return;
+    const t = setTimeout(() => scanRef.current?.focus(), 100);
+    return () => clearTimeout(t);
+  }, [scannerEnabled]);
+
+  // Procesa un código leído: busca el producto por codigo_barras y lo agrega.
+  const handleScan = (codigoRaw: string) => {
+    const codigo = codigoRaw.trim();
+    setScanBuffer("");
+    // Re-enfoca para el siguiente disparo.
+    setTimeout(() => scanRef.current?.focus(), 10);
+    if (!codigo) return;
+
+    // "vacio" es el valor por defecto en la DB; no debe hacer match.
+    const prod = productos.find(
+      (p) => p.codigo_barras && p.codigo_barras !== "vacio" && p.codigo_barras === codigo
+    );
+
+    if (prod) {
+      addItem(prod);
+      Vibration.vibrate(40);
+    } else {
+      Vibration.vibrate([0, 60, 60, 60]);
+      Alert.alert("Producto no encontrado", `Código: ${codigo}`);
+    }
+  };
+
+  // Órdenes del día (pestaña CAJA)
+  const [ordenesDia, setOrdenesDia] = useState<OrdenDia[]>([]);
+  const [totalDia, setTotalDia] = useState(0);
+  const [loadingOrdenes, setLoadingOrdenes] = useState(false);
 
   useEffect(() => {
     if (!selectedCafeteria) return;
     loadData();
   }, [selectedCafeteria]);
+
+  // Carga las órdenes del día al abrir la pestaña CAJA o al cambiar de caja
+  useEffect(() => {
+    if (activeTab !== "caja" || !selectedCafeteria) return;
+    loadOrdenesDia();
+  }, [activeTab, cajaActiva, selectedCafeteria]);
+
+  const loadOrdenesDia = async () => {
+    if (!selectedCafeteria) return;
+    setLoadingOrdenes(true);
+    try {
+      const { data } = await getOrdenesDia(selectedCafeteria.id, cajaActiva?.codigo);
+      setOrdenesDia(data.ordenes);
+      setTotalDia(data.total_dia);
+    } catch {
+      setOrdenesDia([]);
+      setTotalDia(0);
+    } finally {
+      setLoadingOrdenes(false);
+    }
+  };
+
+  const handleSelectCaja = (caja: Caja) => {
+    setCajaActiva(caja);
+    setCajaMenuVisible(false);
+  };
+
+  const handleLogout = async () => {
+    setProfileMenuVisible(false);
+    await logout();
+    router.replace("/login");
+  };
+
+  // Refleja el nuevo precio en la lista local tras editarlo en la DB
+  const handlePrecioActualizado = (id_producto: string, nuevoPrecio: number) => {
+    setProductos((prev) =>
+      prev.map((p) =>
+        p.id_producto === id_producto ? { ...p, precio: nuevoPrecio } : p
+      )
+    );
+  };
 
   const loadData = async () => {
     if (!selectedCafeteria) return;
@@ -113,17 +224,43 @@ export default function PosScreen() {
 
     return (
       <View className="flex-1">
+        {/* Input invisible que captura la pistola lectora (Bluetooth HID) */}
+        {scannerEnabled && (
+          <TextInput
+            ref={scanRef}
+            value={scanBuffer}
+            onChangeText={setScanBuffer}
+            onSubmitEditing={(e) => handleScan(e.nativeEvent.text)}
+            onBlur={() => {
+              // Recupera el foco si nada legítimo se lo quitó (modal/buscador).
+              setTimeout(() => {
+                if (scannerEnabledRef.current) scanRef.current?.focus();
+              }, 80);
+            }}
+            showSoftInputOnFocus={false}
+            blurOnSubmit={false}
+            autoFocus
+            caretHidden
+            autoCorrect={false}
+            autoCapitalize="none"
+            style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
+          />
+        )}
+
         {/* Búsqueda */}
         <View className="px-4 py-3">
           <View className="bg-white rounded-2xl flex-row items-center px-4 py-2 shadow-sm">
             <Text className="text-gray-400 mr-2">🔍</Text>
             <TextInput
               className="flex-1 text-sm text-appu-text"
+              style={{ paddingTop: 0, paddingBottom: 4, textAlignVertical: "center", includeFontPadding: false }}
               placeholder="Buscar productos..."
               placeholderTextColor="#9ca3af"
               value={search}
               onChangeText={setSearch}
               returnKeyType="search"
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
               onSubmitEditing={() => Keyboard.dismiss()}
             />
             {search.length > 0 && (
@@ -196,6 +333,7 @@ export default function PosScreen() {
                 producto={item}
                 cantidad={cantidadEnCarrito(item.id_producto)}
                 onPress={() => addItem(item)}
+                onLongPress={() => setEditandoProducto(item)}
               />
             </View>
           )}
@@ -210,6 +348,106 @@ export default function PosScreen() {
     );
   };
 
+  const renderCajaContent = () => (
+    <View className="flex-1">
+      {/* Selector de cajas */}
+      {cajas.length > 0 && (
+        <View className="pl-4 pt-4 pb-2">
+          <Text className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-2">
+            Caja
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View className="flex-row gap-2 pr-4">
+              {cajas.map((c) => {
+                const isActive = cajaActiva?.id === c.id;
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    onPress={() => setCajaActiva(c)}
+                    className={`px-4 py-2 rounded-full border ${
+                      isActive
+                        ? "bg-appu-blue border-appu-blue"
+                        : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-semibold ${
+                        isActive ? "text-white" : "text-gray-600"
+                      }`}
+                    >
+                      {c.nombre}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Total del día */}
+      <View className="mx-4 my-3 bg-appu-dark rounded-2xl px-5 py-4 flex-row items-center justify-between">
+        <View>
+          <Text className="text-white/60 text-xs uppercase tracking-wider">
+            Ventas del día
+          </Text>
+          <Text className="text-white text-2xl font-bold mt-0.5">
+            ${totalDia.toLocaleString("es-CO")}
+          </Text>
+        </View>
+        <View className="items-end">
+          <Text className="text-white/60 text-xs uppercase tracking-wider">Órdenes</Text>
+          <Text className="text-white text-2xl font-bold mt-0.5">{ordenesDia.length}</Text>
+        </View>
+      </View>
+
+      {/* Listado de órdenes del día */}
+      {loadingOrdenes ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color="#2f2c59" />
+        </View>
+      ) : (
+        <FlatList
+          data={ordenesDia}
+          keyExtractor={(item) => item.id_orden}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          refreshing={loadingOrdenes}
+          onRefresh={loadOrdenesDia}
+          renderItem={({ item }) => (
+            <View className="bg-white rounded-2xl p-4 mb-3 shadow-sm">
+              <View className="flex-row justify-between items-start">
+                <View className="flex-1 pr-2">
+                  <Text className="text-appu-text font-semibold" numberOfLines={1}>
+                    {item.nombre_cliente || "Sin nombre"}
+                  </Text>
+                  <Text className="text-gray-400 text-xs mt-0.5">
+                    {item.fecha_creacion?.slice(11, 16)} · {item.metodo_pago}
+                  </Text>
+                </View>
+                <Text className="text-appu-green font-bold">
+                  ${Number(item.monto).toLocaleString("es-CO")}
+                </Text>
+              </View>
+              {item.productos.length > 0 && (
+                <Text className="text-gray-500 text-xs mt-2" numberOfLines={2}>
+                  {item.productos
+                    .map((p) => `${p.cantidad ?? 1}× ${p.producto ?? ""}`)
+                    .join(", ")}
+                </Text>
+              )}
+            </View>
+          )}
+          ListEmptyComponent={
+            <View className="items-center mt-16">
+              <Text className="text-4xl mb-3">🧾</Text>
+              <Text className="text-gray-400 text-base">Sin órdenes hoy</Text>
+            </View>
+          }
+        />
+      )}
+    </View>
+  );
+
   // ─── UI ─────────────────────────────────────────────────────────────────────
 
   return (
@@ -223,20 +461,26 @@ export default function PosScreen() {
         <View className="flex-row items-center gap-3">
           {/* Selector de caja */}
           {cajas.length > 0 && (
-            <View className="bg-white/15 rounded-xl px-3 py-1.5 flex-row items-center">
+            <TouchableOpacity
+              onPress={() => setCajaMenuVisible(true)}
+              className="bg-white/15 rounded-xl px-3 py-1.5 flex-row items-center active:opacity-70"
+            >
               <Text className="text-white text-xs font-medium">
                 {cajaActiva?.nombre ?? "Sin caja"}
               </Text>
               <Text className="text-white/60 text-xs ml-1">▾</Text>
-            </View>
+            </TouchableOpacity>
           )}
 
           {/* Avatar usuario */}
-          <View className="w-8 h-8 rounded-full bg-appu-orange items-center justify-center">
+          <TouchableOpacity
+            onPress={() => setProfileMenuVisible(true)}
+            className="w-8 h-8 rounded-full bg-appu-orange items-center justify-center active:opacity-70"
+          >
             <Text className="text-white text-xs font-bold">
               {(username ?? "U")[0].toUpperCase()}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -274,12 +518,7 @@ export default function PosScreen() {
       <View className="flex-1 bg-gray-50">
         {activeTab === "ventas" && renderVentasContent()}
         {activeTab === "carrito" && <CartTab />}
-        {activeTab === "caja" && (
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-4xl mb-3">🔧</Text>
-            <Text className="text-gray-400 text-base">Próximamente</Text>
-          </View>
-        )}
+        {activeTab === "caja" && renderCajaContent()}
       </View>
 
       {/* Barra inferior — siempre visible en VENTAS y CARRITO */}
@@ -318,6 +557,92 @@ export default function PosScreen() {
         onSuccess={handleOrdenExitosa}
         cajaActiva={cajaActiva ? { codigo: cajaActiva.codigo, nombre: cajaActiva.nombre } : null}
       />
+
+      {/* Modal editar precio (long-press sobre un producto) */}
+      <EditPriceModal
+        producto={editandoProducto}
+        onClose={() => setEditandoProducto(null)}
+        onSaved={handlePrecioActualizado}
+      />
+
+      {/* Dropdown selector de caja */}
+      <Modal
+        visible={cajaMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCajaMenuVisible(false)}
+      >
+        <Pressable
+          className="flex-1 bg-black/30"
+          onPress={() => setCajaMenuVisible(false)}
+        >
+          <View
+            className="absolute right-4 bg-white rounded-2xl py-2 shadow-lg"
+            style={{ top: insets.top + 52, minWidth: 200 }}
+          >
+            <Text className="text-gray-400 text-xs font-semibold uppercase tracking-wider px-4 py-2">
+              Seleccionar caja
+            </Text>
+            {cajas.map((c) => {
+              const isActive = cajaActiva?.id === c.id;
+              return (
+                <TouchableOpacity
+                  key={c.id}
+                  onPress={() => handleSelectCaja(c)}
+                  className="px-4 py-3 flex-row items-center justify-between active:bg-gray-50"
+                >
+                  <Text
+                    className={`text-sm ${
+                      isActive ? "text-appu-blue font-bold" : "text-appu-text"
+                    }`}
+                  >
+                    {c.nombre}
+                  </Text>
+                  {isActive && <Text className="text-appu-blue ml-3">✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Dropdown perfil / cerrar sesión */}
+      <Modal
+        visible={profileMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setProfileMenuVisible(false)}
+      >
+        <Pressable
+          className="flex-1 bg-black/30"
+          onPress={() => setProfileMenuVisible(false)}
+        >
+          <View
+            className="absolute right-4 bg-white rounded-2xl py-2 shadow-lg"
+            style={{ top: insets.top + 52, minWidth: 220 }}
+          >
+            <View className="px-4 py-3 border-b border-gray-100">
+              <Text className="text-gray-400 text-xs uppercase tracking-wider">
+                Sesión
+              </Text>
+              <Text className="text-appu-text font-semibold mt-0.5" numberOfLines={1}>
+                {username ?? "Usuario"}
+              </Text>
+              {!!selectedCafeteria && (
+                <Text className="text-gray-400 text-xs mt-0.5" numberOfLines={1}>
+                  {selectedCafeteria.nombre}
+                </Text>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={handleLogout}
+              className="px-4 py-3 flex-row items-center active:bg-gray-50"
+            >
+              <Text className="text-red-500 font-semibold">⏏  Cerrar sesión</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }

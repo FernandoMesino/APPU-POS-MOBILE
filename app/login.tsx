@@ -64,7 +64,8 @@ export default function LoginScreen() {
           <View>
             <Text className="text-white/80 text-sm mb-1 font-medium">Usuario</Text>
             <TextInput
-              className="bg-white/10 text-white rounded-xl px-4 py-3 text-base border border-white/20"
+              className="bg-white/10 text-white rounded-xl px-4 text-base border border-white/20"
+              style={{ paddingTop: 10, paddingBottom: 14, textAlignVertical: "center", includeFontPadding: false }}
               placeholder="Tu usuario"
               placeholderTextColor="rgba(255,255,255,0.4)"
               autoCapitalize="none"
@@ -78,7 +79,8 @@ export default function LoginScreen() {
           <View>
             <Text className="text-white/80 text-sm mb-1 font-medium">Contraseña</Text>
             <TextInput
-              className="bg-white/10 text-white rounded-xl px-4 py-3 text-base border border-white/20"
+              className="bg-white/10 text-white rounded-xl px-4 text-base border border-white/20"
+              style={{ paddingTop: 10, paddingBottom: 14, textAlignVertical: "center", includeFontPadding: false }}
               placeholder="Tu contraseña"
               placeholderTextColor="rgba(255,255,255,0.4)"
               secureTextEntry
