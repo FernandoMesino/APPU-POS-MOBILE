@@ -16,6 +16,9 @@
       "ios": {
         "simulator": false
       },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://appu.store/api/mobile",
         "EXPO_PUBLIC_ENV": "preview"
@@ -32,9 +35,7 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "danielpinedasalazar19@gmail.com",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "danielpinedasalazar19@gmail.com"
       }
     }
   }
