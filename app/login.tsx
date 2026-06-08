@@ -5,10 +5,9 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
 } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { router } from "expo-router";
 import { useAuthStore } from "../store/authStore";
 import { loginRequest } from "../services/api";
@@ -46,11 +45,14 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-appu-dark"
+    <KeyboardAwareScrollView
+      style={{ flex: 1, backgroundColor: "#1a1a4e" }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: "center" }}
+      bottomOffset={24}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
-      <View className="flex-1 justify-center px-8">
+      <View className="px-8">
         {/* Logo / título */}
         <View className="items-center mb-12">
           <Text className="text-white text-5xl font-bold tracking-widest">appu</Text>
@@ -106,6 +108,6 @@ export default function LoginScreen() {
           </TouchableOpacity>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }

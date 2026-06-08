@@ -2,6 +2,7 @@ import "../global.css";
 import { useEffect } from "react";
 import { Stack, router } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useAuthStore } from "../store/authStore";
 
 export default function RootLayout() {
@@ -20,11 +21,13 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="login" />
-        <Stack.Screen name="select-cafeteria" />
-        <Stack.Screen name="(app)" />
-      </Stack>
+      <KeyboardProvider>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="login" />
+          <Stack.Screen name="select-cafeteria" />
+          <Stack.Screen name="(app)" />
+        </Stack>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

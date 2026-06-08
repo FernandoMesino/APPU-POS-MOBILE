@@ -6,11 +6,13 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  ScrollView,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
+import {
+  KeyboardAwareScrollView,
+  KeyboardProvider,
+} from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useCartStore } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
@@ -31,6 +33,7 @@ export default function CheckoutModal({
   onSuccess,
   cajaActiva,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const items = useCartStore((s) => s.items);
   const total = useCartStore((s) => s.total);
   const clearCart = useCartStore((s) => s.clearCart);
@@ -95,13 +98,15 @@ export default function CheckoutModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1"
-      >
+      <KeyboardProvider>
         <View className="flex-1 bg-black/40 justify-end">
-          <View className="bg-white rounded-t-3xl p-6" style={{ maxHeight: "85%" }}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+          <View className="bg-white rounded-t-3xl px-6 pt-6" style={{ maxHeight: "85%" }}>
+            <KeyboardAwareScrollView
+              bottomOffset={24}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+            >
               <Text className="text-appu-text text-xl font-bold mb-5">
                 Confirmar venta
               </Text>
@@ -237,10 +242,10 @@ export default function CheckoutModal({
                   )}
                 </TouchableOpacity>
               </View>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardProvider>
     </Modal>
   );
 }

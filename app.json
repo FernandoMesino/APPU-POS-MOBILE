@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Appu POS",
+    "name": "APPU POS",
     "slug": "posdi",
     "scheme": "appu-pos",
     "version": "1.0.0",
@@ -24,7 +24,7 @@
       "package": "store.appu.posmobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2d2c59"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
