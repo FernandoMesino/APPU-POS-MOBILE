@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Modal,
   View,
@@ -16,7 +16,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import { useCartStore } from "../store/cartStore";
 import { useAuthStore } from "../store/authStore";
-import { crearOrden, getDatosTransferencia, DatosTransferencia } from "../services/api";
+import {
+  crearOrden,
+  getDatosTransferencia,
+  buscarClientePorDocumento,
+  DatosTransferencia,
+} from "../services/api";
 
 type Props = {
   visible: boolean;
@@ -47,6 +52,50 @@ export default function CheckoutModal({
   const [datosTransf, setDatosTransf] = useState<DatosTransferencia | null>(null);
   const [loadingQR, setLoadingQR] = useState(false);
   const [qrCargado, setQrCargado] = useState(false);
+
+  // Estado de la búsqueda del cliente por cédula: "idle" | "buscando" | "encontrado" | "no_encontrado"
+  const [clienteEstado, setClienteEstado] = useState<
+    "idle" | "buscando" | "encontrado" | "no_encontrado"
+  >("idle");
+  // Documento de la última búsqueda en curso; descarta respuestas obsoletas.
+  const docBuscadoRef = useRef("");
+
+  // Al digitar la cédula, busca el cliente en AWS y autocompleta nombre y celular.
+  useEffect(() => {
+    const doc = documento.replace(/\D/g, "");
+    if (!selectedCafeteria || doc.length < 5) {
+      docBuscadoRef.current = "";
+      setClienteEstado("idle");
+      return;
+    }
+
+    let cancelado = false;
+    docBuscadoRef.current = doc;
+    setClienteEstado("buscando");
+
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await buscarClientePorDocumento(selectedCafeteria.id, doc);
+        // Ignora si el usuario siguió escribiendo (respuesta de otra cédula).
+        if (cancelado || docBuscadoRef.current !== doc) return;
+
+        if (data.cliente) {
+          if (data.cliente.nombre) setNombre(data.cliente.nombre);
+          if (data.cliente.celular) setCelular(data.cliente.celular);
+          setClienteEstado("encontrado");
+        } else {
+          setClienteEstado("no_encontrado");
+        }
+      } catch {
+        if (!cancelado && docBuscadoRef.current === doc) setClienteEstado("idle");
+      }
+    }, 450);
+
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
+  }, [documento, selectedCafeteria]);
 
   const seleccionarMetodo = async (metodo: string) => {
     setMetodoPago(metodo);
@@ -87,6 +136,8 @@ export default function CheckoutModal({
       setNombre("");
       setDocumento("");
       setCelular("");
+      setClienteEstado("idle");
+      docBuscadoRef.current = "";
       onSuccess(data.id_orden);
     } catch (err: any) {
       const msg = err?.response?.data?.error ?? "No se pudo crear la orden";
@@ -135,18 +186,35 @@ export default function CheckoutModal({
               <Text className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-3">
                 Cliente (opcional)
               </Text>
+              <View className="mb-3">
+                <View className="flex-row items-center border border-gray-200 rounded-xl px-4">
+                  <TextInput
+                    className="flex-1 py-3 text-sm"
+                    placeholder="Documento (cédula)"
+                    keyboardType="numeric"
+                    value={documento}
+                    onChangeText={setDocumento}
+                  />
+                  {clienteEstado === "buscando" && (
+                    <ActivityIndicator size="small" color="#2f2c59" />
+                  )}
+                </View>
+                {clienteEstado === "encontrado" && (
+                  <Text className="text-appu-green text-xs mt-1 ml-1">
+                    ✓ Cliente encontrado, datos autocompletados
+                  </Text>
+                )}
+                {clienteEstado === "no_encontrado" && (
+                  <Text className="text-gray-400 text-xs mt-1 ml-1">
+                    Cliente nuevo — completa los datos manualmente
+                  </Text>
+                )}
+              </View>
               <TextInput
                 className="border border-gray-200 rounded-xl px-4 py-3 mb-3 text-sm"
                 placeholder="Nombre"
                 value={nombre}
                 onChangeText={setNombre}
-              />
-              <TextInput
-                className="border border-gray-200 rounded-xl px-4 py-3 mb-3 text-sm"
-                placeholder="Documento"
-                keyboardType="numeric"
-                value={documento}
-                onChangeText={setDocumento}
               />
               <TextInput
                 className="border border-gray-200 rounded-xl px-4 py-3 mb-5 text-sm"

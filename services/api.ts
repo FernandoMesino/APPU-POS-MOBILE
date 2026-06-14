@@ -107,6 +107,19 @@ export const getDatosTransferencia = (cafeteria_id: string) =>
     `/ventas/datos-transferencia/?cafeteria_id=${cafeteria_id}`
   );
 
+export type ClientePOS = {
+  documento: string;
+  nombre: string;
+  celular: string;
+  correo: string;
+};
+
+// Busca un cliente por su cédula para autocompletar los datos en la factura.
+export const buscarClientePorDocumento = (cafeteria_id: string, documento: string) =>
+  api.get<{ cliente: ClientePOS | null }>(
+    `/ventas/cliente/?cafeteria_id=${cafeteria_id}&documento=${encodeURIComponent(documento)}`
+  );
+
 export type OrdenDia = {
   id_orden: string;
   monto: number;
