@@ -61,9 +61,10 @@ export default function CheckoutModal({
   const docBuscadoRef = useRef("");
 
   // Al digitar la cédula, busca el cliente en AWS y autocompleta nombre y celular.
+  // La búsqueda es global (no depende de la cafetería seleccionada).
   useEffect(() => {
     const doc = documento.replace(/\D/g, "");
-    if (!selectedCafeteria || doc.length < 5) {
+    if (doc.length < 5) {
       docBuscadoRef.current = "";
       setClienteEstado("idle");
       return;
@@ -75,7 +76,7 @@ export default function CheckoutModal({
 
     const timer = setTimeout(async () => {
       try {
-        const { data } = await buscarClientePorDocumento(selectedCafeteria.id, doc);
+        const { data } = await buscarClientePorDocumento(doc);
         // Ignora si el usuario siguió escribiendo (respuesta de otra cédula).
         if (cancelado || docBuscadoRef.current !== doc) return;
 
@@ -95,7 +96,7 @@ export default function CheckoutModal({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [documento, selectedCafeteria]);
+  }, [documento]);
 
   const seleccionarMetodo = async (metodo: string) => {
     setMetodoPago(metodo);

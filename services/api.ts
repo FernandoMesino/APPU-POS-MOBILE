@@ -112,12 +112,15 @@ export type ClientePOS = {
   nombre: string;
   celular: string;
   correo: string;
+  // De dónde salieron los datos: "cache" | "subsidios" | "app" | "acudientes" | "plaza".
+  origen?: string;
 };
 
 // Busca un cliente por su cédula para autocompletar los datos en la factura.
-export const buscarClientePorDocumento = (cafeteria_id: string, documento: string) =>
+// La búsqueda es global (no depende de la cafetería).
+export const buscarClientePorDocumento = (documento: string) =>
   api.get<{ cliente: ClientePOS | null }>(
-    `/ventas/cliente/?cafeteria_id=${cafeteria_id}&documento=${encodeURIComponent(documento)}`
+    `/ventas/cliente/?documento=${encodeURIComponent(documento)}`
   );
 
 export type OrdenDia = {
