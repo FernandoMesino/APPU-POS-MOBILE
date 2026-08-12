@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import InAppKeyboard from './InAppKeyboard';
 import { useCartStore } from '../store/cartStore';
 
 const formatPrice = (n: number) => '$' + n.toLocaleString('es-CO');
@@ -11,7 +12,14 @@ type CartItem = {
   cantidad: number;
 };
 
-function CartRow({ item }: { item: CartItem }) {
+function CartRow({
+  item,
+  onEditar,
+}: {
+  item: CartItem;
+  /** Abre el teclado propio de la pestaña para editar esta cantidad. */
+  onEditar: (id: string) => void;
+}) {
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
 
@@ -63,6 +71,10 @@ function CartRow({ item }: { item: CartItem }) {
           keyboardType="number-pad"
           returnKeyType="done"
           selectTextOnFocus
+          // Teclado propio: con la pistola conectada Android no muestra el del
+          // sistema. Ver components/InAppKeyboard.tsx.
+          showSoftInputOnFocus={false}
+          onFocus={() => onEditar(item.id_producto)}
           className="bg-gray-100 rounded-lg text-appu-text font-bold text-base text-center px-2 py-1"
           style={{ minWidth: 44 }}
         />
@@ -80,6 +92,26 @@ function CartRow({ item }: { item: CartItem }) {
 
 export default function CartTab() {
   const items = useCartStore((s) => s.items);
+  const updateQuantity = useCartStore((s) => s.updateQuantity);
+  const removeItem = useCartStore((s) => s.removeItem);
+
+  // Producto cuya cantidad se está editando con el teclado propio. El teclado
+  // vive acá y no en cada fila para que quede anclado abajo, como uno real.
+  const [editando, setEditando] = useState<string | null>(null);
+  const itemEditando = items.find((i) => i.id_producto === editando) ?? null;
+
+  const cambiarCantidad = (texto: string) => {
+    if (!itemEditando) return;
+    const limpio = texto.replace(/[^0-9]/g, "");
+    // Vacío o 0 no borra el producto en caliente: sería destructivo mientras se
+    // teclea. La fila se elimina recién al cerrar el teclado.
+    const n = parseInt(limpio, 10);
+    if (Number.isFinite(n) && n > 0) updateQuantity(itemEditando.id_producto, n);
+  };
+
+  const cerrarTeclado = () => {
+    setEditando(null);
+  };
 
   if (items.length === 0) {
     return (
@@ -92,13 +124,27 @@ export default function CartTab() {
   }
 
   return (
-    <FlatList
-      data={items}
-      keyExtractor={(item) => item.id_producto}
-      contentContainerStyle={{ padding: 16, gap: 12 }}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      renderItem={({ item }) => <CartRow item={item} />}
-    />
+    <View className="flex-1">
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id_producto}
+        contentContainerStyle={{ padding: 16, gap: 12 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        renderItem={({ item }) => (
+          <CartRow item={item} onEditar={setEditando} />
+        )}
+      />
+
+      {itemEditando && (
+        <InAppKeyboard
+          mode="numeric"
+          label={`Cantidad · ${itemEditando.producto}`}
+          value={String(itemEditando.cantidad)}
+          onChange={cambiarCantidad}
+          onClose={cerrarTeclado}
+        />
+      )}
+    </View>
   );
 }

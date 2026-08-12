@@ -30,6 +30,10 @@ import ProductCard from "../../components/ProductCard";
 import CartTab from "../../components/CartTab";
 import CheckoutModal from "../../components/CheckoutModal";
 import EditPriceModal from "../../components/EditPriceModal";
+import NewCajaModal from "../../components/NewCajaModal";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import InAppKeyboard from "../../components/InAppKeyboard";
+import CreateProductoScreen from "../../components/CreateProductoScreen";
 
 type Tab = "ventas" | "carrito" | "caja";
 
@@ -61,6 +65,8 @@ export default function PosScreen() {
   // Menús del header
   const [cajaMenuVisible, setCajaMenuVisible] = useState(false);
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
+  const [nuevaCajaVisible, setNuevaCajaVisible] = useState(false);
+  const [nuevoProductoVisible, setNuevoProductoVisible] = useState(false);
 
   // ─── Pistola lectora (Bluetooth HID) ────────────────────────────────────────
   // La pistola se comporta como un teclado: "teclea" el código y manda un Enter.
@@ -69,12 +75,17 @@ export default function PosScreen() {
   const scanRef = useRef<TextInput>(null);
   const [scanBuffer, setScanBuffer] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  // Teclado propio del buscador. Deliberadamente NO entra en `scannerEnabled`:
+  // así se puede teclear la búsqueda y disparar la pistola al mismo tiempo.
+  const [tecladoBusqueda, setTecladoBusqueda] = useState(false);
 
   const anyModalOpen =
     checkoutVisible ||
     !!editandoProducto ||
     cajaMenuVisible ||
-    profileMenuVisible;
+    profileMenuVisible ||
+    nuevaCajaVisible ||
+    nuevoProductoVisible;
 
   // El escáner está activo solo en VENTAS, sin modales abiertos, ya cargado, y
   // mientras el cajero no esté escribiendo manualmente en el buscador.
@@ -150,6 +161,24 @@ export default function PosScreen() {
     setCajaMenuVisible(false);
   };
 
+  // La caja recién creada se agrega a la lista y queda seleccionada, para no
+  // obligar al cajero a volver a abrir el menú.
+  const handleCajaCreada = (caja: Caja) => {
+    setCajas((prev) => [...prev, caja]);
+    setCajaActiva(caja);
+  };
+
+  // El producto nuevo entra al catálogo en memoria sin recargar todo, y su
+  // categoría se registra si no existía.
+  const handleProductoCreado = (producto: Producto) => {
+    setProductos((prev) => [producto, ...prev]);
+    setCategorias((prev) =>
+      producto.categoria && !prev.includes(producto.categoria)
+        ? [...prev, producto.categoria].sort()
+        : prev
+    );
+  };
+
   const handleLogout = async () => {
     setProfileMenuVisible(false);
     await logout();
@@ -177,8 +206,13 @@ export default function PosScreen() {
       setCategorias(prodRes.data.categorias);
       setCajas(cajaRes.data.cajas);
       if (cajaRes.data.cajas.length > 0) setCajaActiva(cajaRes.data.cajas[0]);
-    } catch {
-      Alert.alert("Error", "No se pudieron cargar los productos");
+    } catch (err: any) {
+      // Un 401 significa sesión vencida: el interceptor de api.ts ya desloguea
+      // y navega al login. Mostrar además "no se pudieron cargar los productos"
+      // solo confunde, porque el problema no es la carga sino la sesión.
+      if (err?.response?.status !== 401) {
+        Alert.alert("Error", "No se pudieron cargar los productos");
+      }
     } finally {
       setLoading(false);
     }
@@ -259,9 +293,17 @@ export default function PosScreen() {
               value={search}
               onChangeText={setSearch}
               returnKeyType="search"
-              onFocus={() => setSearchFocused(true)}
+              onFocus={() => {
+                setSearchFocused(true);
+                setTecladoBusqueda(true);
+              }}
               onBlur={() => setSearchFocused(false)}
               onSubmitEditing={() => Keyboard.dismiss()}
+              // Teclado propio: el del sistema no aparece con la pistola
+              // conectada. Como este escribe directo al estado, no necesita que
+              // el campo conserve el foco — por eso la pistola puede seguir
+              // capturando códigos mientras se teclea la búsqueda.
+              showSoftInputOnFocus={false}
             />
             {search.length > 0 && (
               <TouchableOpacity onPress={() => setSearch("")}>
@@ -602,9 +644,57 @@ export default function PosScreen() {
                 </TouchableOpacity>
               );
             })}
+
+            {/* Alta de caja */}
+            <TouchableOpacity
+              onPress={() => {
+                setCajaMenuVisible(false);
+                setNuevaCajaVisible(true);
+              }}
+              className="px-4 py-3 flex-row items-center border-t border-gray-100 active:bg-gray-50"
+            >
+              <Text className="text-appu-blue text-lg mr-2">＋</Text>
+              <Text className="text-appu-blue text-sm font-semibold">
+                Agregar caja
+              </Text>
+            </TouchableOpacity>
           </View>
         </Pressable>
       </Modal>
+
+      {/* Teclado propio del buscador. Va absoluto sobre la barra inferior,
+          igual que haría el teclado del sistema. */}
+      {tecladoBusqueda && (
+        <View className="absolute left-0 right-0 bottom-0 bg-white">
+          <InAppKeyboard
+            mode="text"
+            label="Buscar productos"
+            value={search}
+            onChange={setSearch}
+            onClose={() => {
+              setTecladoBusqueda(false);
+              setSearchFocused(false);
+            }}
+          />
+        </View>
+      )}
+
+      {/* Alta de una caja nueva */}
+      <NewCajaModal
+        visible={nuevaCajaVisible}
+        cafeteriaId={selectedCafeteria?.id ?? null}
+        onClose={() => setNuevaCajaVisible(false)}
+        onCreated={handleCajaCreada}
+      />
+
+      {/* Alta de un producto nuevo */}
+      <CreateProductoScreen
+        visible={nuevoProductoVisible}
+        cafeteriaId={selectedCafeteria?.id ?? null}
+        categorias={categorias}
+        onClose={() => setNuevoProductoVisible(false)}
+        onCreated={handleProductoCreado}
+      />
 
       {/* Dropdown perfil / cerrar sesión */}
       <Modal
@@ -634,11 +724,37 @@ export default function PosScreen() {
                 </Text>
               )}
             </View>
+            {/* Altas rápidas desde el mostrador */}
+            <TouchableOpacity
+              onPress={() => {
+                setProfileMenuVisible(false);
+                setNuevoProductoVisible(true);
+              }}
+              className="px-4 py-3 flex-row items-center active:bg-gray-50"
+            >
+              <Ionicons name="cube-outline" size={19} color="#2f2c59" />
+              <Text className="text-appu-text font-semibold ml-3">
+                Crear producto
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setProfileMenuVisible(false);
+                setNuevaCajaVisible(true);
+              }}
+              className="px-4 py-3 flex-row items-center active:bg-gray-50 border-b border-gray-100"
+            >
+              <Ionicons name="albums-outline" size={19} color="#2f2c59" />
+              <Text className="text-appu-text font-semibold ml-3">Crear caja</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={handleLogout}
               className="px-4 py-3 flex-row items-center active:bg-gray-50"
             >
-              <Text className="text-red-500 font-semibold">⏏  Cerrar sesión</Text>
+              <Ionicons name="log-out-outline" size={19} color="#ef4444" />
+              <Text className="text-red-500 font-semibold ml-3">Cerrar sesión</Text>
             </TouchableOpacity>
           </View>
         </Pressable>

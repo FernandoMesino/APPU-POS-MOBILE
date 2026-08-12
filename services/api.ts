@@ -102,6 +102,14 @@ export const getProductos = (cafeteria_id: string) =>
 export const getCajas = (cafeteria_id: string) =>
   api.get<{ cajas: Caja[] }>(`/ventas/cajas/?cafeteria_id=${cafeteria_id}`);
 
+// Da de alta una caja. El `codigo` es lo que queda grabado en cada orden, así
+// que el backend rechaza códigos repetidos dentro de la misma cafetería.
+export const crearCaja = (payload: {
+  cafeteria_id: string;
+  nombre: string;
+  codigo: string;
+}) => api.post<{ success: boolean; caja: Caja }>("/ventas/caja/crear/", payload);
+
 export const getDatosTransferencia = (cafeteria_id: string) =>
   api.get<{ transferencia: DatosTransferencia | null }>(
     `/ventas/datos-transferencia/?cafeteria_id=${cafeteria_id}`
@@ -123,6 +131,35 @@ export const buscarClientePorDocumento = (documento: string) =>
     `/ventas/cliente/?documento=${encodeURIComponent(documento)}`
   );
 
+export type SugerenciaCliente = {
+  documento: string;
+  nombre: string;
+  celular: string;
+  correo: string;
+};
+
+// Autocompletado mientras se escribe la cédula. Solo consulta la caché de
+// clientes que este POS ya facturó (el backend no escanea las tablas grandes
+// por prefijo). Devuelve [] con menos de 3 dígitos.
+export const buscarSugerenciasClientes = (q: string) =>
+  api.get<{ sugerencias: SugerenciaCliente[] }>(
+    `/ventas/clientes/sugerencias/?q=${encodeURIComponent(q)}`
+  );
+
+// Registra un cliente nuevo sin facturarle, para que la próxima búsqueda por
+// cédula lo autocomplete. Es un upsert: repetir el documento actualiza.
+export const crearCliente = (payload: {
+  documento: string;
+  nombre: string;
+  celular?: string;
+  correo?: string;
+}) =>
+  api.post<{
+    success: boolean;
+    ya_existia: boolean;
+    cliente: ClientePOS;
+  }>("/ventas/cliente/crear/", payload);
+
 export type OrdenDia = {
   id_orden: string;
   monto: number;
@@ -138,6 +175,21 @@ export const getOrdenesDia = (cafeteria_id: string, caja_codigo?: string) =>
   api.get<{ ordenes: OrdenDia[]; total_dia: number; cantidad: number }>(
     `/ventas/ordenes-dia/?cafeteria_id=${cafeteria_id}` +
       (caja_codigo ? `&caja_codigo=${encodeURIComponent(caja_codigo)}` : "")
+  );
+
+// Alta de producto desde el mostrador. Solo los campos que llena un cajero; el
+// resto de la ficha queda con los valores por defecto del backend.
+export const crearProducto = (payload: {
+  cafeteria_id: string;
+  producto: string;
+  categoria: string;
+  precio: number;
+  cantidad: number;
+  codigo_barras?: string;
+}) =>
+  api.post<{ success: boolean; producto: Producto }>(
+    "/ventas/producto/crear/",
+    payload
   );
 
 export const actualizarPrecioProducto = (id_producto: string, precio: number) =>

@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import InAppKeyboard from "./InAppKeyboard";
 import { actualizarPrecioProducto, type Producto } from "../services/api";
 
 type Props = {
@@ -21,9 +22,15 @@ type Props = {
 export default function EditPriceModal({ producto, onClose, onSaved }: Props) {
   const [precio, setPrecio] = useState("");
   const [loading, setLoading] = useState(false);
+  // `autoFocus` en el input abre el teclado propio de entrada, que es lo que
+  // se espera al tocar "editar precio": teclear el número y listo.
+  const [tecladoAbierto, setTecladoAbierto] = useState(true);
 
   useEffect(() => {
-    if (producto) setPrecio(String(producto.precio ?? ""));
+    if (producto) {
+      setPrecio(String(producto.precio ?? ""));
+      setTecladoAbierto(true);
+    }
   }, [producto]);
 
   const handleGuardar = async () => {
@@ -81,8 +88,24 @@ export default function EditPriceModal({ producto, onClose, onSaved }: Props) {
                 selectTextOnFocus
                 placeholder="0"
                 placeholderTextColor="#9ca3af"
+                // Teclado propio: con la pistola conectada Android no muestra
+                // el del sistema. Ver components/InAppKeyboard.tsx.
+                showSoftInputOnFocus={false}
+                onFocus={() => setTecladoAbierto(true)}
               />
             </View>
+
+            {tecladoAbierto && (
+              <View className="-mx-6 mb-4">
+                <InAppKeyboard
+                  mode="numeric"
+                  label="Precio"
+                  value={precio}
+                  onChange={setPrecio}
+                  onClose={() => setTecladoAbierto(false)}
+                />
+              </View>
+            )}
 
             <View className="flex-row gap-3">
               <TouchableOpacity

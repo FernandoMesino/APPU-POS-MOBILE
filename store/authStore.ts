@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import * as SecureStore from "expo-secure-store";
+import { tokenVencido } from "../services/jwt";
 
 type Cafeteria = { id: string; nombre: string };
 
@@ -52,6 +53,26 @@ export const useAuthStore = create<AuthState>((set) => ({
   loadToken: async () => {
     const token = await SecureStore.getItemAsync(K_TOKEN);
     const username = await SecureStore.getItemAsync(K_USERNAME);
+
+    // El token vive en SecureStore indefinidamente, pero el backend lo vence.
+    // Sin este chequeo la app entraba al POS con un token muerto: el primer
+    // request devolvía 401, saltaba "No se pudieron cargar los productos" y
+    // recién ahí el interceptor deslogueaba. Mejor detectarlo acá y mandar al
+    // login de una, sin el error de por medio.
+    if (token && tokenVencido(token)) {
+      await SecureStore.deleteItemAsync(K_TOKEN);
+      await SecureStore.deleteItemAsync(K_USERNAME);
+      await SecureStore.deleteItemAsync(K_CAFETERIAS);
+      await SecureStore.deleteItemAsync(K_CAFETERIA);
+      set({
+        token: null,
+        username: null,
+        cafeterias: [],
+        selectedCafeteria: null,
+        isLoading: false,
+      });
+      return false;
+    }
 
     if (token && username) {
       const cafeteriasRaw = await SecureStore.getItemAsync(K_CAFETERIAS);
