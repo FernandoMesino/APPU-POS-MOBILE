@@ -7,8 +7,9 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
+  Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import InAppKeyboard from "./InAppKeyboard";
 
@@ -43,8 +44,26 @@ type Props = {
   children: ReactNode;
 };
 
-export default function FullScreenForm({
-  visible,
+export default function FullScreenForm(props: Props) {
+  return (
+    <Modal
+      visible={props.visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={props.onClose}
+    >
+      {/* SafeAreaProvider propio: react-native-safe-area-context NO propaga los
+          insets dentro de un Modal de React Native. Sin esto, `insets.top`
+          llegaba en 0 y la cabecera se metía debajo del reloj y la isla
+          dinámica del iPhone. */}
+      <SafeAreaProvider>
+        <Contenido {...props} />
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function Contenido({
   titulo,
   subtitulo,
   onClose,
@@ -55,17 +74,25 @@ export default function FullScreenForm({
   onCerrarTeclado,
   children,
 }: Props) {
+  const insets = useSafeAreaInsets();
+
+  // Piso mínimo por si el inset todavía llega en 0 (el provider necesita un
+  // frame para medir). +8 de aire para que la ✕ no quede rozando el reloj.
+  const altoBarraEstado =
+    Platform.OS === "ios"
+      ? Math.max(insets.top, 44)
+      : Math.max(insets.top, StatusBar.currentHeight ?? 24);
+  const padTop = altoBarraEstado + 8;
+
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-    >
+    <>
       <StatusBar barStyle="light-content" backgroundColor="#1a1a4e" />
-      <SafeAreaView edges={["top"]} className="flex-1 bg-white">
+      <View className="flex-1 bg-white">
         {/* Cabecera */}
-        <View className="bg-appu-dark px-4 py-4 flex-row items-center">
+        <View
+          className="bg-appu-dark px-4 pb-4 flex-row items-center"
+          style={{ paddingTop: padTop }}
+        >
           <TouchableOpacity
             onPress={onClose}
             hitSlop={12}
@@ -97,7 +124,11 @@ export default function FullScreenForm({
 
         {/* Botón principal, siempre visible sobre el teclado */}
         {!campoTeclado && (
-          <View className="px-5 pb-5 pt-2 border-t border-gray-100">
+          <View
+            className="px-5 pt-2 border-t border-gray-100"
+            // Deja libre el indicador de inicio del iPhone.
+            style={{ paddingBottom: Math.max(insets.bottom, 20) }}
+          >
             <TouchableOpacity
               onPress={onAccion}
               disabled={guardando}
@@ -121,8 +152,8 @@ export default function FullScreenForm({
             onClose={onCerrarTeclado}
           />
         )}
-      </SafeAreaView>
-    </Modal>
+      </View>
+    </>
   );
 }
 

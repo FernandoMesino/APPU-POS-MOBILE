@@ -331,12 +331,16 @@ function Tecla({
           {label}
         </Text>
       )}
-    </Pressable>
+    </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   contenedor: {
+    // Ancho explícito: si el padre alinea distinto de "stretch", el teclado se
+    // encogía al contenido y las teclas se apilaban en una esquina.
+    width: "100%",
+    alignSelf: "stretch",
     backgroundColor: C.fondo,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: C.borde,
@@ -395,6 +399,7 @@ const styles = StyleSheet.create({
   },
   fila: {
     flexDirection: "row",
+    alignSelf: "stretch",
   },
   tecla: {
     alignItems: "center",
