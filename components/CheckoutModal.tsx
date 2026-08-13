@@ -125,7 +125,7 @@ export default function CheckoutModal({
   // ── Sugerencias por prefijo (mientras escribe) ─────────────────────────────
   useEffect(() => {
     const doc = documento.replace(/\D/g, "");
-    if (doc.length < 3 || !mostrarSugerencias) {
+    if (doc.length < 3 || !mostrarSugerencias || !selectedCafeteria) {
       setSugerencias([]);
       return;
     }
@@ -133,7 +133,10 @@ export default function CheckoutModal({
     let cancelado = false;
     const timer = setTimeout(async () => {
       try {
-        const { data } = await buscarSugerenciasClientes(doc);
+        const { data } = await buscarSugerenciasClientes(
+          doc,
+          selectedCafeteria.id
+        );
         if (cancelado) return;
         // Si ya es la cédula completa y exacta, la lista sobra.
         setSugerencias(
@@ -156,7 +159,7 @@ export default function CheckoutModal({
     const doc = documento.replace(/\D/g, "");
     setClienteCreado(false);
 
-    if (doc.length < 5) {
+    if (doc.length < 5 || !selectedCafeteria) {
       docBuscadoRef.current = "";
       setClienteEstado("idle");
       return;
@@ -168,7 +171,10 @@ export default function CheckoutModal({
 
     const timer = setTimeout(async () => {
       try {
-        const { data } = await buscarClientePorDocumento(doc);
+        const { data } = await buscarClientePorDocumento(
+          doc,
+          selectedCafeteria.id
+        );
         // Ignora si el usuario siguió escribiendo (respuesta de otra cédula).
         if (cancelado || docBuscadoRef.current !== doc) return;
 
@@ -228,6 +234,7 @@ export default function CheckoutModal({
 
   const handleCrearCliente = async () => {
     const doc = documento.replace(/\D/g, "");
+    if (!selectedCafeteria) return;
     if (!nombre.trim()) {
       Alert.alert("Falta el nombre", "Escribe el nombre del cliente para registrarlo.");
       return;
@@ -235,6 +242,7 @@ export default function CheckoutModal({
     setCreandoCliente(true);
     try {
       await crearCliente({
+        cafeteria_id: selectedCafeteria.id,
         documento: doc,
         nombre: nombre.trim(),
         celular: celular.trim(),

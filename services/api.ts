@@ -125,10 +125,14 @@ export type ClientePOS = {
 };
 
 // Busca un cliente por su cédula para autocompletar los datos en la factura.
-// La búsqueda es global (no depende de la cafetería).
-export const buscarClientePorDocumento = (documento: string) =>
+// Acotada a la cafetería: no devuelve clientes de otros comercios.
+export const buscarClientePorDocumento = (
+  documento: string,
+  cafeteria_id: string
+) =>
   api.get<{ cliente: ClientePOS | null }>(
-    `/ventas/cliente/?documento=${encodeURIComponent(documento)}`
+    `/ventas/cliente/?documento=${encodeURIComponent(documento)}` +
+      `&cafeteria_id=${encodeURIComponent(cafeteria_id)}`
   );
 
 export type SugerenciaCliente = {
@@ -138,17 +142,19 @@ export type SugerenciaCliente = {
   correo: string;
 };
 
-// Autocompletado mientras se escribe la cédula. Solo consulta la caché de
-// clientes que este POS ya facturó (el backend no escanea las tablas grandes
-// por prefijo). Devuelve [] con menos de 3 dígitos.
-export const buscarSugerenciasClientes = (q: string) =>
+// Autocompletado mientras se escribe la cédula. Solo los clientes que esta
+// cafetería ya facturó. Devuelve [] con menos de 3 dígitos.
+export const buscarSugerenciasClientes = (q: string, cafeteria_id: string) =>
   api.get<{ sugerencias: SugerenciaCliente[] }>(
-    `/ventas/clientes/sugerencias/?q=${encodeURIComponent(q)}`
+    `/ventas/clientes/sugerencias/?q=${encodeURIComponent(q)}` +
+      `&cafeteria_id=${encodeURIComponent(cafeteria_id)}`
   );
 
 // Registra un cliente nuevo sin facturarle, para que la próxima búsqueda por
 // cédula lo autocomplete. Es un upsert: repetir el documento actualiza.
+// Queda asociado a la cafetería que lo registra.
 export const crearCliente = (payload: {
+  cafeteria_id: string;
   documento: string;
   nombre: string;
   celular?: string;
@@ -176,6 +182,21 @@ export const getOrdenesDia = (cafeteria_id: string, caja_codigo?: string) =>
     `/ventas/ordenes-dia/?cafeteria_id=${cafeteria_id}` +
       (caja_codigo ? `&caja_codigo=${encodeURIComponent(caja_codigo)}` : "")
   );
+
+// Intenta dar de alta el producto a partir del código escaneado, copiando la
+// ficha de la plantilla maestra. `encontrado: false` significa que ese código no
+// está en la plantilla y toca llenar el formulario a mano.
+// La plantilla maestra NO se modifica: el producto se crea solo en la cafetería.
+export const productoDesdePlantilla = (payload: {
+  cafeteria_id: string;
+  codigo_barras: string;
+}) =>
+  api.post<{
+    encontrado: boolean;
+    ya_existia?: boolean;
+    sin_precio?: boolean;
+    producto?: Producto;
+  }>("/ventas/producto/desde-plantilla/", payload);
 
 // Alta de producto desde el mostrador. Solo los campos que llena un cajero; el
 // resto de la ficha queda con los valores por defecto del backend.

@@ -38,6 +38,8 @@ type Props = {
   accion: string;
   onAccion: () => void;
   guardando?: boolean;
+  /** Oculta el botón principal (pasos que no se confirman, como el escaneo). */
+  ocultarAccion?: boolean;
   /** Campo que el teclado propio está editando, o null si está cerrado. */
   campoTeclado: CampoTeclado | null;
   onCerrarTeclado: () => void;
@@ -70,6 +72,7 @@ function Contenido({
   accion,
   onAccion,
   guardando,
+  ocultarAccion,
   campoTeclado,
   onCerrarTeclado,
   children,
@@ -123,7 +126,7 @@ function Contenido({
         </ScrollView>
 
         {/* Botón principal, siempre visible sobre el teclado */}
-        {!campoTeclado && (
+        {!campoTeclado && !ocultarAccion && (
           <View
             className="px-5 pt-2 border-t border-gray-100"
             // Deja libre el indicador de inicio del iPhone.
