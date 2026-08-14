@@ -11,9 +11,12 @@ import {
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import FullScreenForm, { CampoFormulario, type CampoTeclado } from "./FullScreenForm";
+import { Image } from "expo-image";
 import {
   crearProducto,
+  consultarPlantilla,
   productoDesdePlantilla,
+  type FichaMaestra,
   type Producto,
 } from "../services/api";
 
@@ -46,13 +49,15 @@ export default function CreateProductoScreen({
   onClose,
   onCreated,
 }: Props) {
-  // "escaneando" -> esperando el disparo de la pistola.
+  // "escaneando"  -> esperando el disparo de la pistola.
   // "consultando" -> buscando ese código en la plantilla maestra.
-  // "manual"      -> no estaba en la plantilla: se llena a mano con el código fijo.
-  const [fase, setFase] = useState<"escaneando" | "consultando" | "manual">(
-    "escaneando"
-  );
+  // "confirmando" -> estaba en la plantilla: falta ponerle precio y stock.
+  // "manual"      -> no estaba: se llena todo a mano con el código fijo.
+  const [fase, setFase] = useState<
+    "escaneando" | "consultando" | "confirmando" | "manual"
+  >("escaneando");
   const [codigoBarras, setCodigoBarras] = useState("");
+  const [ficha, setFicha] = useState<FichaMaestra | null>(null);
 
   const [valores, setValores] = useState<Record<Campo, string>>({
     producto: "",
@@ -80,8 +85,43 @@ export default function CreateProductoScreen({
     setFase("escaneando");
     setCodigoBarras("");
     setScanBuffer("");
+    setFicha(null);
     setValores({ producto: "", categoria: "", precio: "", cantidad: "" });
     setCampoActivo(null);
+  };
+
+  // Alta del producto que sí estaba en la plantilla maestra: el backend relee
+  // la ficha, acá solo se mandan precio y stock.
+  const handleConfirmarDesdePlantilla = async () => {
+    if (!cafeteriaId || !ficha) return;
+
+    const precio = Number(valores.precio.replace(/[^0-9]/g, ""));
+    if (!Number.isFinite(precio) || precio <= 0) {
+      Alert.alert("Precio inválido", "El precio debe ser mayor que cero.");
+      return;
+    }
+    const cantidad = Number(valores.cantidad.replace(/[^0-9]/g, "") || "0");
+
+    setGuardando(true);
+    try {
+      const { data } = await productoDesdePlantilla({
+        cafeteria_id: cafeteriaId,
+        codigo_barras: ficha.codigo_barras,
+        precio,
+        cantidad,
+      });
+      onCreated(data.producto);
+      Alert.alert(
+        "Producto agregado",
+        `"${data.producto.producto}" se agregó desde la plantilla maestra.`
+      );
+      cerrar();
+    } catch (err: any) {
+      const msg = err?.response?.data?.error ?? "No se pudo crear el producto";
+      Alert.alert("Error", msg);
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const cerrar = () => {
@@ -103,40 +143,59 @@ export default function CreateProductoScreen({
     setFase("consultando");
 
     try {
-      const { data } = await productoDesdePlantilla({
+      const { data } = await consultarPlantilla({
         cafeteria_id: cafeteriaId,
         codigo_barras: codigo,
       });
 
-      if (data.encontrado && data.producto) {
-        if (data.ya_existia) {
-          Alert.alert(
-            "Ya lo tienes",
-            `"${data.producto.producto}" ya está en el catálogo de esta cafetería.`
-          );
-          cerrar();
-          return;
-        }
-
-        onCreated(data.producto);
+      if (data.ya_existia && data.producto) {
+        const p = data.producto;
+        // No se cierra la pantalla: lo normal es que el cajero siga con el
+        // siguiente producto, así que vuelve al escaneo listo para disparar.
+        Vibration.vibrate([0, 60, 60, 60]);
         Alert.alert(
-          "Producto agregado",
-          `"${data.producto.producto}" se agregó desde la plantilla maestra.` +
-            (data.sin_precio
-              ? "\n\nLa plantilla no trae precio: asígnaselo desde el catálogo antes de venderlo."
-              : ""),
+          "Ya está en el catálogo",
+          `"${p.producto}" ya existe en esta cafetería con ese código.\n\n` +
+            `Precio: $${p.precio.toLocaleString("es-CO")}\n` +
+            `Stock: ${p.cantidad}\n\n` +
+            "Para cambiarle el precio, tócalo en la lista de productos.",
         );
-        cerrar();
+        reiniciar();
+        return;
+      }
+
+      if (data.encontrado && data.ficha) {
+        // Está en la plantilla: se muestra la ficha y se pide precio y stock
+        // ANTES de crear nada.
+        setFicha(data.ficha);
+        setValores((prev) => ({
+          ...prev,
+          producto: data.ficha!.producto,
+          categoria: data.ficha!.categoria,
+          precio: data.ficha!.precio_sugerido
+            ? String(data.ficha!.precio_sugerido)
+            : "",
+        }));
+        setFase("confirmando");
         return;
       }
 
       // No está en la plantilla: se llena a mano con el código ya fijado.
       setFase("manual");
     } catch (err: any) {
-      const msg = err?.response?.data?.error ?? "No se pudo consultar la plantilla";
-      Alert.alert("Error", msg);
-      setFase("escaneando");
-      setTimeout(() => scanRef.current?.focus(), 10);
+      // Si la consulta falla (servidor sin el endpoint, sin red, error puntual)
+      // NO se deja al cajero bloqueado: se sigue al alta manual con el código
+      // ya escaneado. Consultar la plantilla es una comodidad, no un requisito.
+      const detalle = err?.response?.data?.error;
+      const status = err?.response?.status;
+      console.warn(`[plantilla] fallo la consulta (status ${status}):`, detalle);
+
+      setFase("manual");
+      Alert.alert(
+        "Sigue a mano",
+        detalle ??
+          "No se pudo consultar la plantilla maestra. Completa los datos del producto manualmente; el código escaneado ya quedó guardado."
+      );
     }
   };
 
@@ -188,7 +247,7 @@ export default function CreateProductoScreen({
   };
 
   const campoTeclado: CampoTeclado | null =
-    fase === "manual" && campoActivo
+    (fase === "manual" || fase === "confirmando") && campoActivo
       ? {
           label: CAMPOS[campoActivo].label,
           mode: CAMPOS[campoActivo].mode,
@@ -196,6 +255,90 @@ export default function CreateProductoScreen({
           onChange: set(campoActivo),
         }
       : null;
+
+  // ── Precio y stock del producto encontrado en la plantilla ─────────────────
+  if (fase === "confirmando" && ficha) {
+    return (
+      <FullScreenForm
+        visible={visible}
+        titulo="Ponle precio y stock"
+        subtitulo="Encontrado en la plantilla maestra"
+        onClose={cerrar}
+        accion="Agregar al catálogo"
+        onAccion={handleConfirmarDesdePlantilla}
+        guardando={guardando}
+        campoTeclado={campoTeclado}
+        onCerrarTeclado={() => setCampoActivo(null)}
+      >
+        {/* Ficha maestra: informativa, no editable. Viene de la fuente
+            compartida y el backend la relee al crear. */}
+        <View className="flex-row items-center bg-green-50 rounded-2xl p-4 mb-5">
+          {ficha.foto_url ? (
+            <Image
+              source={{ uri: ficha.foto_url }}
+              style={{ width: 56, height: 56, borderRadius: 12 }}
+              contentFit="cover"
+              transition={150}
+            />
+          ) : (
+            <View className="w-14 h-14 rounded-xl bg-white items-center justify-center">
+              <Ionicons name="cube-outline" size={26} color="#22c55e" />
+            </View>
+          )}
+          <View className="ml-3 flex-1">
+            <Text className="text-appu-text font-bold text-base" numberOfLines={2}>
+              {ficha.producto}
+            </Text>
+            <Text className="text-gray-500 text-xs mt-0.5">
+              {ficha.categoria}
+              {ficha.marca ? ` · ${ficha.marca}` : ""}
+            </Text>
+            <Text className="text-gray-400 text-xs mt-0.5">
+              {ficha.codigo_barras}
+            </Text>
+          </View>
+          <Ionicons name="checkmark-circle" size={22} color="#22c55e" />
+        </View>
+
+        <Text className="text-gray-500 text-sm mb-5 leading-5">
+          El nombre, la categoría y el resto de la ficha vienen de la plantilla
+          maestra. Solo falta lo que es propio de tu cafetería:
+        </Text>
+
+        <CampoFormulario label="Precio de venta">
+          <View className="border border-gray-200 rounded-2xl bg-gray-50 flex-row items-center px-4">
+            <Text className="text-appu-text text-base font-bold mr-1">$</Text>
+            <TextInput
+              className="flex-1 py-3.5 text-base text-appu-text"
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+              keyboardType="numeric"
+              value={valores.precio}
+              onChangeText={set("precio")}
+              showSoftInputOnFocus={false}
+              onFocus={() => abrirTeclado("precio")}
+            />
+          </View>
+        </CampoFormulario>
+
+        <CampoFormulario
+          label="Stock inicial"
+          hint="Cuántas unidades entran hoy al inventario."
+        >
+          <TextInput
+            className={inputClass}
+            placeholder="0"
+            placeholderTextColor="#9ca3af"
+            keyboardType="numeric"
+            value={valores.cantidad}
+            onChangeText={set("cantidad")}
+            showSoftInputOnFocus={false}
+            onFocus={() => abrirTeclado("cantidad")}
+          />
+        </CampoFormulario>
+      </FullScreenForm>
+    );
+  }
 
   // ── Fase de escaneo ────────────────────────────────────────────────────────
   if (fase !== "manual") {
@@ -262,17 +405,32 @@ export default function CreateProductoScreen({
                 </Text>
               </View>
 
-              {/* Salida para productos que no tienen código de barras. */}
+              {/* Separador */}
+              <View className="flex-row items-center w-full mt-8 mb-5">
+                <View className="flex-1 h-px bg-gray-200" />
+                <Text className="text-gray-400 text-xs font-semibold mx-3">o</Text>
+                <View className="flex-1 h-px bg-gray-200" />
+              </View>
+
+              {/* Alta sin código: verduras, fruta, granel — cosas que se pesan o
+                  se cuentan y nunca traen código impreso. */}
               <TouchableOpacity
                 onPress={() => {
                   setCodigoBarras("");
                   setFase("manual");
                 }}
-                className="mt-6 py-2 active:opacity-60"
+                className="w-full flex-row items-center border border-appu-blue rounded-2xl px-4 py-4 active:opacity-70"
               >
-                <Text className="text-appu-blue text-sm font-semibold underline">
-                  El producto no tiene código de barras
-                </Text>
+                <Ionicons name="leaf-outline" size={22} color="#2f2c59" />
+                <View className="ml-3 flex-1">
+                  <Text className="text-appu-blue font-bold text-sm">
+                    Producto sin código de barras
+                  </Text>
+                  <Text className="text-gray-500 text-xs mt-0.5 leading-4">
+                    Verduras, fruta, granel y todo lo que se vende suelto.
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
               </TouchableOpacity>
             </>
           )}
@@ -296,6 +454,29 @@ export default function CreateProductoScreen({
       campoTeclado={campoTeclado}
       onCerrarTeclado={() => setCampoActivo(null)}
     >
+      {/* Producto suelto: se deja constancia de que la falta de código es
+          intencional, y se ofrece volver a escanear por si fue un descuido. */}
+      {!codigoBarras && (
+        <View className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-3.5 mb-5">
+          <Ionicons name="leaf-outline" size={22} color="#6b7280" />
+          <View className="ml-3 flex-1">
+            <Text className="text-gray-500 text-xs font-semibold uppercase tracking-wider">
+              Sin código de barras
+            </Text>
+            <Text className="text-gray-400 text-xs mt-0.5 leading-4">
+              Se venderá buscándolo por nombre, no con la pistola.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={reiniciar}
+            hitSlop={10}
+            className="active:opacity-60"
+          >
+            <Ionicons name="barcode-outline" size={22} color="#2f2c59" />
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* Código escaneado: fijo, no editable. */}
       {!!codigoBarras && (
         <View className="flex-row items-center bg-blue-50 rounded-2xl px-4 py-3.5 mb-5">

@@ -90,15 +90,20 @@ export default function LoginScreen() {
     }
   };
 
+  const tecladoAbierto = campoActivo !== null;
+
   return (
-    <SafeAreaView style={styles.safe}>
+    // edges solo arriba: el borde inferior lo maneja el teclado propio con su
+    // propio inset. Con "bottom" acá quedaba una franja morada bajo el teclado
+    // y el espacio de seguridad contado dos veces.
+    <SafeAreaView edges={["top"]} style={styles.safe}>
       {/* Ojo: NO envolver esto en <TouchableWithoutFeedback onPress={Keyboard.dismiss}>.
           El padre captura el toque de los TextInput y cierra el teclado antes de
           que el input tome el foco → no se puede escribir. Para cerrar el
           teclado alcanza con keyboardDismissMode="on-drag". */}
       <KeyboardAwareScrollView
         style={styles.flex}
-        contentContainerStyle={styles.scroll}
+        contentContainerStyle={[styles.scroll, tecladoAbierto && styles.scrollCompacto]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
@@ -106,12 +111,14 @@ export default function LoginScreen() {
       >
           {/* Logo — el PNG trae el fondo #2d2c59 incrustado, por eso `safe`
               usa exactamente ese color: si no, se ve el recuadro del logo. */}
+          {/* Con el teclado abierto el logo se encoge: si no, empuja el
+              formulario fuera de la pantalla en teléfonos chicos. */}
           <Image
             source={require("../assets/logo-appu.png")}
-            style={styles.logo}
+            style={[styles.logo, tecladoAbierto && styles.logoCompacto]}
           />
 
-          <Text style={styles.tagline}>Punto de Venta</Text>
+          {!tecladoAbierto && <Text style={styles.tagline}>Punto de Venta</Text>}
 
           {/* Usuario */}
           <View style={styles.inputGroup}>
@@ -203,6 +210,7 @@ export default function LoginScreen() {
       {campoActivo && (
         <InAppKeyboard
           mode="text"
+          variant="oscuro"
           label={etiquetaCampo[campoActivo]}
           value={valorCampo[campoActivo]}
           onChange={setterCampo[campoActivo]}
@@ -231,11 +239,22 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 40,
   },
+  // Con el teclado abierto sobra poco alto: se recortan los márgenes para que
+  // el formulario entre completo también en teléfonos chicos.
+  scrollCompacto: {
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
   logo: {
     width: 220,
     height: 220,
     resizeMode: "contain",
     marginBottom: 8,
+  },
+  logoCompacto: {
+    width: 110,
+    height: 110,
+    marginBottom: 16,
   },
   tagline: {
     color: "#c7c6e8",

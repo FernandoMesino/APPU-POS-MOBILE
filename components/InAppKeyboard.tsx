@@ -32,7 +32,12 @@ type Props = {
   /** Etiqueta del campo que se está editando, para no perder el contexto. */
   label?: string;
   maxLength?: number;
+  /** "oscuro" para pantallas de fondo oscuro, como el login. */
+  variant?: "claro" | "oscuro";
 };
+
+/** off = minúsculas · una = solo la próxima letra · fija = bloqueo de mayúsculas */
+type EstadoMayus = "off" | "una" | "fija";
 
 const FILA_DIGITOS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const FILAS_TEXTO = [
@@ -44,7 +49,19 @@ const SIMBOLOS = ["@", ".", "-", "_"];
 
 // ─── Paleta ──────────────────────────────────────────────────────────────────
 
-const C = {
+type Paleta = {
+  fondo: string;
+  tecla: string;
+  teclaPulsada: string;
+  modificador: string;
+  modificadorPulsado: string;
+  texto: string;
+  textoTenue: string;
+  acento: string;
+  borde: string;
+};
+
+const CLARO: Paleta = {
   fondo: "#e6e8ef",
   tecla: "#ffffff",
   teclaPulsada: "#d7dae4",
@@ -56,6 +73,20 @@ const C = {
   borde: "#cdd1dd",
 };
 
+// Para pantallas de fondo oscuro (el login). Un teclado claro ahí corta la
+// pantalla en dos y se ve pegado.
+const OSCURO: Paleta = {
+  fondo: "#232246",
+  tecla: "#3a3866",
+  teclaPulsada: "#2b2a52",
+  modificador: "#1c1b3a",
+  modificadorPulsado: "#15142c",
+  texto: "#ffffff",
+  textoTenue: "#a9a7c9",
+  acento: "#ff6600",
+  borde: "#3f3d6b",
+};
+
 export default function InAppKeyboard({
   mode,
   value,
@@ -63,10 +94,12 @@ export default function InAppKeyboard({
   onClose,
   label,
   maxLength,
+  variant = "claro",
 }: Props) {
-  const [mayus, setMayus] = useState(true);
+  const [mayus, setMayus] = useState<EstadoMayus>("una");
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const C = variant === "oscuro" ? OSCURO : CLARO;
 
   // ── Métrica responsive ──────────────────────────────────────────────────
   // El teclado se dimensiona contra la pantalla, no con valores fijos: en
@@ -93,19 +126,26 @@ export default function InAppKeyboard({
   const escribir = (ch: string) => {
     if (maxLength !== undefined && value.length >= maxLength) return;
     onChange(value + ch);
-    // Mayúscula solo para la primera letra, como en un teclado normal.
-    if (mode === "text" && mayus) setMayus(false);
+    // "una" se consume tras la primera letra; "fija" es bloqueo y no se toca.
+    if (mode === "text" && mayus === "una") setMayus("off");
   };
 
   const borrar = () => onChange(value.slice(0, -1));
 
-  const metrica = { alto: mode === "numeric" ? altoTeclaNum : altoTecla, gap, radio };
+  // Ciclo del shift: off -> una -> fija -> off. El estado "fija" es el bloqueo
+  // de mayúsculas, que antes no existía: la mayúscula se perdía tras cada letra.
+  const cambiarMayus = () =>
+    setMayus((m) => (m === "off" ? "una" : m === "una" ? "fija" : "off"));
+
+  const metrica = { alto: mode === "numeric" ? altoTeclaNum : altoTecla, gap, radio, C };
 
   return (
     <View
       style={[
         styles.contenedor,
         {
+          backgroundColor: C.fondo,
+          borderTopColor: C.borde,
           paddingHorizontal: gap,
           // Respeta la barra de gestos: sin esto, la última fila queda debajo.
           paddingBottom: Math.max(insets.bottom, gap * 2),
@@ -116,7 +156,10 @@ export default function InAppKeyboard({
       <View style={[styles.barra, apaisado && styles.barraCompacta]}>
         <View style={styles.etiquetaChip}>
           <Ionicons name="create-outline" size={13} color={C.textoTenue} />
-          <Text style={styles.etiquetaTexto} numberOfLines={1}>
+          <Text
+            style={[styles.etiquetaTexto, { color: C.textoTenue }]}
+            numberOfLines={1}
+          >
             {label ?? "Escribiendo"}
           </Text>
         </View>
@@ -125,7 +168,7 @@ export default function InAppKeyboard({
           onPress={onClose}
           activeOpacity={0.75}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={styles.listo}
+          style={[styles.listo, { backgroundColor: C.acento }]}
         >
           <Text style={styles.listoTexto}>Listo</Text>
           <Ionicons name="chevron-down" size={15} color="#ffffff" />
@@ -138,7 +181,7 @@ export default function InAppKeyboard({
         <TextPad
           m={metrica}
           mayus={mayus}
-          onToggleMayus={() => setMayus((v) => !v)}
+          onToggleMayus={cambiarMayus}
           onPress={escribir}
           onBorrar={borrar}
         />
@@ -151,7 +194,7 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(Math.max(n, min), max);
 }
 
-type Metrica = { alto: number; gap: number; radio: number };
+type Metrica = { alto: number; gap: number; radio: number; C: Paleta };
 
 // ─── Layout numérico ─────────────────────────────────────────────────────────
 
@@ -198,12 +241,13 @@ function TextPad({
   onBorrar,
 }: {
   m: Metrica;
-  mayus: boolean;
+  mayus: EstadoMayus;
   onToggleMayus: () => void;
   onPress: (ch: string) => void;
   onBorrar: () => void;
 }) {
-  const letra = (l: string) => (mayus ? l.toUpperCase() : l);
+  const enMayus = mayus !== "off";
+  const letra = (l: string) => (enMayus ? l.toUpperCase() : l);
 
   return (
     <View>
@@ -223,12 +267,20 @@ function TextPad({
 
       {/* Última fila de letras: shift y borrar la flanquean, más anchas. */}
       <View style={styles.fila}>
+        {/* Un toque activa la mayúscula para la próxima letra; otro toque la
+            deja fija (candado) hasta que se vuelva a tocar. */}
         <Tecla
           m={m}
-          icon={mayus ? "arrow-up" : "arrow-up-outline"}
+          icon={
+            mayus === "fija"
+              ? "lock-closed"
+              : mayus === "una"
+              ? "arrow-up"
+              : "arrow-up-outline"
+          }
           onPress={onToggleMayus}
           modificador
-          activa={mayus}
+          activa={enMayus}
           peso={1.5}
         />
         {FILAS_TEXTO[2].map((l) => (
@@ -276,6 +328,7 @@ function Tecla({
   pequena?: boolean;
   peso?: number;
 }) {
+  const C = m.C;
   const colorContenido = activa ? "#ffffff" : tenue ? C.textoTenue : C.texto;
 
   // El estado de pulsado se lleva a mano en vez de con `style` como función de
@@ -341,9 +394,7 @@ const styles = StyleSheet.create({
     // encogía al contenido y las teclas se apilaban en una esquina.
     width: "100%",
     alignSelf: "stretch",
-    backgroundColor: C.fondo,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: C.borde,
     paddingTop: 6,
     // Sombra hacia arriba: despega el teclado del contenido de la pantalla.
     ...Platform.select({
@@ -373,7 +424,6 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   etiquetaTexto: {
-    color: C.textoTenue,
     fontSize: 12,
     fontWeight: "600",
     letterSpacing: 0.4,
@@ -384,7 +434,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
-    backgroundColor: C.acento,
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 999,

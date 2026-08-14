@@ -25,6 +25,20 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Cuando el backend responde HTML en vez de JSON, la respuesta es una página de
+// error entera. Volcarla al log tapa la consola y hace que un simple "ruta no
+// encontrada" parezca un fallo grave, así que se resume.
+const resumirError = (data: unknown): unknown => {
+  if (typeof data !== "string") return data;
+
+  const esHtml = data.trimStart().toLowerCase().startsWith("<!doctype");
+  if (!esHtml) return data.length > 300 ? data.slice(0, 300) + "…" : data;
+
+  // Django pone el motivo real en el <title> ("403 Forbidden", "404 Not Found").
+  const titulo = data.match(/<title>([^<]*)<\/title>/i)?.[1]?.trim();
+  return `HTML del servidor (${titulo ?? "sin título"}) — el endpoint no devolvió JSON; suele ser una ruta que no existe en ese servidor.`;
+};
+
 // Manejo de errores: log en dev + cierre de sesión si el token expiró
 api.interceptors.response.use(
   (response) => response,
@@ -33,7 +47,7 @@ api.interceptors.response.use(
       console.error(
         `[API Error] ${error.config?.method?.toUpperCase()} ${error.config?.url}`,
         error.response?.status,
-        error.response?.data
+        resumirError(error.response?.data)
       );
     }
 
@@ -183,20 +197,44 @@ export const getOrdenesDia = (cafeteria_id: string, caja_codigo?: string) =>
       (caja_codigo ? `&caja_codigo=${encodeURIComponent(caja_codigo)}` : "")
   );
 
-// Intenta dar de alta el producto a partir del código escaneado, copiando la
-// ficha de la plantilla maestra. `encontrado: false` significa que ese código no
-// está en la plantilla y toca llenar el formulario a mano.
-// La plantilla maestra NO se modifica: el producto se crea solo en la cafetería.
-export const productoDesdePlantilla = (payload: {
+export type FichaMaestra = {
+  codigo_barras: string;
+  producto: string;
+  categoria: string;
+  marca: string;
+  descripcion: string;
+  foto_url: string;
+  /** La plantilla no maneja precio: casi siempre llega 0. Es solo una sugerencia. */
+  precio_sugerido: number;
+};
+
+// Paso 1: consulta el código en la plantilla maestra SIN crear nada, para que
+// el cajero vea la ficha y le ponga precio y stock antes de confirmar.
+// `encontrado: false` = no está en la plantilla, toca el formulario manual.
+export const consultarPlantilla = (payload: {
   cafeteria_id: string;
   codigo_barras: string;
 }) =>
   api.post<{
     encontrado: boolean;
     ya_existia?: boolean;
-    sin_precio?: boolean;
+    ficha?: FichaMaestra;
     producto?: Producto;
-  }>("/ventas/producto/desde-plantilla/", payload);
+  }>("/ventas/plantilla/consultar/", payload);
+
+// Paso 2: crea el producto en la cafetería con la ficha maestra + precio y
+// stock. El backend relee la plantilla, no confía en lo que mande el móvil.
+// La plantilla maestra NO se modifica.
+export const productoDesdePlantilla = (payload: {
+  cafeteria_id: string;
+  codigo_barras: string;
+  precio: number;
+  cantidad: number;
+}) =>
+  api.post<{ success: boolean; producto: Producto }>(
+    "/ventas/producto/desde-plantilla/",
+    payload
+  );
 
 // Alta de producto desde el mostrador. Solo los campos que llena un cajero; el
 // resto de la ficha queda con los valores por defecto del backend.
