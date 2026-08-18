@@ -34,6 +34,7 @@ import NewCajaModal from "../../components/NewCajaModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import InAppKeyboard from "../../components/InAppKeyboard";
 import CreateProductoScreen from "../../components/CreateProductoScreen";
+import { abrirLegal } from "../../services/legal";
 
 type Tab = "ventas" | "carrito" | "caja";
 
@@ -749,9 +750,25 @@ export default function PosScreen() {
               <Text className="text-appu-text font-semibold ml-3">Crear caja</Text>
             </TouchableOpacity>
 
+            {/* Requisito de Apple (5.1.1(i)): la política de privacidad tiene
+                que ser accesible dentro de la app, no solo en la ficha de la
+                tienda. También está al pie del login. */}
+            <TouchableOpacity
+              onPress={() => {
+                setProfileMenuVisible(false);
+                abrirLegal();
+              }}
+              className="px-4 py-3 flex-row items-center active:bg-gray-50"
+            >
+              <Ionicons name="shield-checkmark-outline" size={19} color="#6b7280" />
+              <Text className="text-gray-600 font-semibold ml-3">
+                Términos y privacidad
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={handleLogout}
-              className="px-4 py-3 flex-row items-center active:bg-gray-50"
+              className="px-4 py-3 flex-row items-center active:bg-gray-50 border-t border-gray-100"
             >
               <Ionicons name="log-out-outline" size={19} color="#ef4444" />
               <Text className="text-red-500 font-semibold ml-3">Cerrar sesión</Text>

@@ -156,7 +156,8 @@ export type SugerenciaCliente = {
   correo: string;
 };
 
-// Autocompletado mientras se escribe la cédula. Solo los clientes que esta
+// Autocompletado mientras se escribe: `q` puede ser un prefijo de cédula (solo
+// dígitos) o parte del nombre. Solo los clientes que esta
 // cafetería ya facturó. Devuelve [] con menos de 3 dígitos.
 export const buscarSugerenciasClientes = (q: string, cafeteria_id: string) =>
   api.get<{ sugerencias: SugerenciaCliente[] }>(

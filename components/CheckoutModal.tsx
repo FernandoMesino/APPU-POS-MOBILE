@@ -122,10 +122,20 @@ export default function CheckoutModal({
     };
   }, []);
 
-  // ── Sugerencias por prefijo (mientras escribe) ─────────────────────────────
+  // ── Sugerencias mientras escribe (por cédula o por nombre) ─────────────────
+  // Qué se busca depende del campo que se esté editando: el de documento tiene
+  // teclado numérico, así que el nombre solo se puede buscar desde su campo.
+  const buscaPorNombre = campoActivo === "nombre";
+  const consultaSugerencias = buscaPorNombre
+    ? nombre.trim()
+    : documento.replace(/\D/g, "");
+
   useEffect(() => {
-    const doc = documento.replace(/\D/g, "");
-    if (doc.length < 3 || !mostrarSugerencias || !selectedCafeteria) {
+    if (
+      consultaSugerencias.length < 3 ||
+      !mostrarSugerencias ||
+      !selectedCafeteria
+    ) {
       setSugerencias([]);
       return;
     }
@@ -134,13 +144,13 @@ export default function CheckoutModal({
     const timer = setTimeout(async () => {
       try {
         const { data } = await buscarSugerenciasClientes(
-          doc,
+          consultaSugerencias,
           selectedCafeteria.id
         );
         if (cancelado) return;
         // Si ya es la cédula completa y exacta, la lista sobra.
         setSugerencias(
-          data.sugerencias.filter((s) => s.documento !== doc)
+          data.sugerencias.filter((s) => s.documento !== consultaSugerencias)
         );
       } catch {
         if (!cancelado) setSugerencias([]);
@@ -151,7 +161,7 @@ export default function CheckoutModal({
       cancelado = true;
       clearTimeout(timer);
     };
-  }, [documento, mostrarSugerencias]);
+  }, [consultaSugerencias, mostrarSugerencias, selectedCafeteria]);
 
   // ── Búsqueda exacta (autocompleta nombre y celular) ────────────────────────
   // Consulta global: caché + subsidios + app + acudientes + plaza.
@@ -203,6 +213,7 @@ export default function CheckoutModal({
     setNombre(s.nombre);
     if (s.celular) setCelular(s.celular);
     setClienteEstado("encontrado");
+    setCampoActivo(null);
     Keyboard.dismiss();
   };
 
@@ -211,12 +222,17 @@ export default function CheckoutModal({
     setDocumento(v);
   };
 
+  const onCambiarNombre = (v: string) => {
+    setMostrarSugerencias(true);
+    setNombre(v);
+  };
+
   // Mapas del teclado propio. Van acá abajo porque dependen de
   // `onCambiarDocumento`, que se declara arriba con const.
   const valorCampo: Record<Campo, string> = { documento, nombre, celular };
   const setterCampo: Record<Campo, (v: string) => void> = {
     documento: onCambiarDocumento,
-    nombre: setNombre,
+    nombre: onCambiarNombre,
     celular: setCelular,
   };
   const etiquetaCampo: Record<Campo, string> = {
@@ -314,6 +330,32 @@ export default function CheckoutModal({
   // espacio que queda, si no el contenido se saldría por arriba.
   const maxSheetHeight = (screenHeight - kbHeight) * 0.85;
 
+  // La misma lista se cuelga del campo que se esté usando para buscar.
+  const listaSugerencias = sugerencias.length > 0 && (
+    <View className="border border-gray-200 rounded-xl mt-1 overflow-hidden">
+      {sugerencias.map((s, i) => (
+        <TouchableOpacity
+          key={s.documento}
+          onPress={() => elegirSugerencia(s)}
+          className={`flex-row items-center px-4 py-3 active:bg-gray-100 ${
+            i > 0 ? "border-t border-gray-100" : ""
+          }`}
+        >
+          <Ionicons name="person-circle-outline" size={22} color="#94a3b8" />
+          <View className="ml-3 flex-1">
+            <Text className="text-appu-text text-sm font-semibold" numberOfLines={1}>
+              {s.nombre}
+            </Text>
+            <Text className="text-gray-400 text-xs mt-0.5">
+              {s.documento}
+              {s.celular ? ` · ${s.celular}` : ""}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View className="flex-1 bg-black/40 justify-end">
@@ -380,31 +422,8 @@ export default function CheckoutModal({
                 )}
               </View>
 
-              {/* Sugerencias mientras escribe */}
-              {sugerencias.length > 0 && (
-                <View className="border border-gray-200 rounded-xl mt-1 overflow-hidden">
-                  {sugerencias.map((s, i) => (
-                    <TouchableOpacity
-                      key={s.documento}
-                      onPress={() => elegirSugerencia(s)}
-                      className={`flex-row items-center px-4 py-3 active:bg-gray-100 ${
-                        i > 0 ? "border-t border-gray-100" : ""
-                      }`}
-                    >
-                      <Ionicons name="person-circle-outline" size={22} color="#94a3b8" />
-                      <View className="ml-3 flex-1">
-                        <Text className="text-appu-text text-sm font-semibold" numberOfLines={1}>
-                          {s.nombre}
-                        </Text>
-                        <Text className="text-gray-400 text-xs mt-0.5">
-                          {s.documento}
-                          {s.celular ? ` · ${s.celular}` : ""}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+              {/* Sugerencias por cédula */}
+              {!buscaPorNombre && listaSugerencias}
 
               {clienteEstado === "encontrado" && !clienteCreado && (
                 <Text className="text-appu-green text-xs mt-1 ml-1">
@@ -423,14 +442,18 @@ export default function CheckoutModal({
               )}
             </View>
 
-            <TextInput
-              className="border border-gray-200 rounded-xl px-4 py-3 mb-3 text-sm"
-              placeholder="Nombre"
-              value={nombre}
-              onChangeText={setNombre}
-              showSoftInputOnFocus={false}
-              onFocus={() => abrirTeclado("nombre")}
-            />
+            <View className="mb-3">
+              <TextInput
+                className="border border-gray-200 rounded-xl px-4 py-3 text-sm"
+                placeholder="Nombre (o búscalo escribiéndolo)"
+                value={nombre}
+                onChangeText={onCambiarNombre}
+                showSoftInputOnFocus={false}
+                onFocus={() => abrirTeclado("nombre")}
+              />
+              {/* Sugerencias por nombre */}
+              {buscaPorNombre && listaSugerencias}
+            </View>
             <TextInput
               className="border border-gray-200 rounded-xl px-4 py-3 mb-3 text-sm"
               placeholder="Celular"

@@ -19,6 +19,7 @@ import { router } from "expo-router";
 import InAppKeyboard from "../components/InAppKeyboard";
 import { useAuthStore } from "../store/authStore";
 import { loginRequest } from "../services/api";
+import { abrirLegal } from "../services/legal";
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
@@ -203,6 +204,20 @@ export default function LoginScreen() {
               <Text style={styles.loginBtnText}>Ingresar</Text>
             )}
           </TouchableOpacity>
+
+          {/* Apple pide que la política de privacidad sea accesible dentro de la
+              app. Va acá porque el login es lo único que se ve sin sesión. */}
+          {!tecladoAbierto && (
+            <TouchableOpacity
+              onPress={abrirLegal}
+              style={styles.legal}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.legalTexto}>
+                Términos y política de privacidad
+              </Text>
+            </TouchableOpacity>
+          )}
       </KeyboardAwareScrollView>
 
       {/* Teclado propio, anclado abajo. Reemplaza al del sistema, que Android
@@ -315,6 +330,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 10,
     elevation: 6,
+  },
+  legal: {
+    marginTop: 22,
+    paddingVertical: 4,
+  },
+  legalTexto: {
+    color: "rgba(255,255,255,0.55)",
+    fontSize: 13,
+    textDecorationLine: "underline",
+    textAlign: "center",
   },
   loginBtnText: {
     color: "#fff",
