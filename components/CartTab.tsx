@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { FlatList, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import InAppKeyboard from './InAppKeyboard';
 import { useCartStore } from '../store/cartStore';
+import { useTecladoAdaptativo } from "../hooks/useTecladoAdaptativo";
 
 const formatPrice = (n: number) => '$' + n.toLocaleString('es-CO');
 
@@ -22,6 +23,8 @@ function CartRow({
 }) {
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
+  // Teclado del sistema si no hay pistola conectada; el propio si la hay.
+  const { usarPropio, propsCampo } = useTecladoAdaptativo();
 
   // Texto local para permitir borrar/escribir libremente sin perder el foco.
   const [text, setText] = useState(String(item.cantidad));
@@ -29,6 +32,8 @@ function CartRow({
   useEffect(() => {
     setText(String(item.cantidad));
   }, [item.cantidad]);
+
+  const propsTeclado = propsCampo(() => onEditar(item.id_producto));
 
   const commit = () => {
     const n = parseInt(text.replace(/[^0-9]/g, ''), 10);
@@ -67,14 +72,17 @@ function CartRow({
           value={text}
           onChangeText={(t) => setText(t.replace(/[^0-9]/g, ''))}
           onEndEditing={commit}
-          onBlur={commit}
           keyboardType="number-pad"
           returnKeyType="done"
           selectTextOnFocus
-          // Teclado propio: con la pistola conectada Android no muestra el del
-          // sistema. Ver components/InAppKeyboard.tsx.
-          showSoftInputOnFocus={false}
-          onFocus={() => onEditar(item.id_producto)}
+          // Teclado del sistema si no hay pistola; el propio si la hay.
+          {...propsTeclado}
+          // Va DESPUÉS del spread y encadena los dos: `propsTeclado` trae su
+          // propio onBlur y sin esto pisaría el commit de la cantidad.
+          onBlur={() => {
+            propsTeclado.onBlur();
+            commit();
+          }}
           className="bg-gray-100 rounded-lg text-appu-text font-bold text-base text-center px-2 py-1"
           style={{ minWidth: 44 }}
         />
@@ -91,6 +99,7 @@ function CartRow({
 }
 
 export default function CartTab() {
+  const { usarPropio } = useTecladoAdaptativo();
   const items = useCartStore((s) => s.items);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const removeItem = useCartStore((s) => s.removeItem);
@@ -136,7 +145,7 @@ export default function CartTab() {
         )}
       />
 
-      {itemEditando && (
+      {usarPropio && itemEditando && (
         <InAppKeyboard
           mode="numeric"
           label={`Cantidad · ${itemEditando.producto}`}

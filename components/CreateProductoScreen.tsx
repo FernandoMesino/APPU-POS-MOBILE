@@ -19,6 +19,7 @@ import {
   type FichaMaestra,
   type Producto,
 } from "../services/api";
+import { useTecladoAdaptativo } from "../hooks/useTecladoAdaptativo";
 
 type Props = {
   visible: boolean;
@@ -57,6 +58,8 @@ export default function CreateProductoScreen({
     "escaneando" | "consultando" | "confirmando" | "manual"
   >("escaneando");
   const [codigoBarras, setCodigoBarras] = useState("");
+  // Teclado del sistema si no hay pistola conectada; el propio si la hay.
+  const { usarPropio, propsCampo } = useTecladoAdaptativo();
   const [ficha, setFicha] = useState<FichaMaestra | null>(null);
 
   const [valores, setValores] = useState<Record<Campo, string>>({
@@ -315,8 +318,7 @@ export default function CreateProductoScreen({
               keyboardType="numeric"
               value={valores.precio}
               onChangeText={set("precio")}
-              showSoftInputOnFocus={false}
-              onFocus={() => abrirTeclado("precio")}
+              {...propsCampo(() => abrirTeclado("precio"))}
             />
           </View>
         </CampoFormulario>
@@ -332,8 +334,7 @@ export default function CreateProductoScreen({
             keyboardType="numeric"
             value={valores.cantidad}
             onChangeText={set("cantidad")}
-            showSoftInputOnFocus={false}
-            onFocus={() => abrirTeclado("cantidad")}
+            {...propsCampo(() => abrirTeclado("cantidad"))}
           />
         </CampoFormulario>
       </FullScreenForm>
@@ -506,8 +507,7 @@ export default function CreateProductoScreen({
           placeholderTextColor="#9ca3af"
           value={valores.producto}
           onChangeText={set("producto")}
-          showSoftInputOnFocus={false}
-          onFocus={() => abrirTeclado("producto")}
+          {...propsCampo(() => abrirTeclado("producto"))}
         />
       </CampoFormulario>
 
@@ -525,8 +525,7 @@ export default function CreateProductoScreen({
           placeholderTextColor="#9ca3af"
           value={valores.categoria}
           onChangeText={set("categoria")}
-          showSoftInputOnFocus={false}
-          onFocus={() => abrirTeclado("categoria")}
+          {...propsCampo(() => abrirTeclado("categoria"))}
         />
 
         {categorias.length > 0 && (
@@ -567,8 +566,7 @@ export default function CreateProductoScreen({
                 keyboardType="numeric"
                 value={valores.precio}
                 onChangeText={set("precio")}
-                showSoftInputOnFocus={false}
-                onFocus={() => abrirTeclado("precio")}
+                {...propsCampo(() => abrirTeclado("precio"))}
               />
             </View>
           </CampoFormulario>
@@ -583,8 +581,7 @@ export default function CreateProductoScreen({
               keyboardType="numeric"
               value={valores.cantidad}
               onChangeText={set("cantidad")}
-              showSoftInputOnFocus={false}
-              onFocus={() => abrirTeclado("cantidad")}
+              {...propsCampo(() => abrirTeclado("cantidad"))}
             />
           </CampoFormulario>
         </View>

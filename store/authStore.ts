@@ -15,6 +15,8 @@ type AuthState = {
   selectCafeteria: (cafeteria: Cafeteria) => Promise<void>;
   logout: () => Promise<void>;
   loadToken: () => Promise<boolean>;
+  /** Pide un token nuevo al backend y lo guarda. Silencioso: nunca desloguea. */
+  refrescarSesionSilenciosa: () => Promise<void>;
 };
 
 // Claves de almacenamiento seguro
@@ -88,10 +90,33 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       set({ token, username, cafeterias, selectedCafeteria, isLoading: false });
+
+      // Renueva la sesión en segundo plano: el arranque no espera por la red,
+      // pero cada vez que se abre la app el token vuelve a cero su cuenta
+      // regresiva. Con eso un POS de uso diario nunca vuelve a ver el login.
+      void useAuthStore.getState().refrescarSesionSilenciosa();
+
       return true;
     }
 
     set({ isLoading: false });
     return false;
+  },
+
+  refrescarSesionSilenciosa: async () => {
+    try {
+      // Import diferido: services/api importa este store para poder desloguear
+      // en los 401, así que a nivel de módulo serían imports circulares.
+      const { refrescarSesion } = await import("../services/api");
+      const { data } = await refrescarSesion();
+      if (!data?.token) return;
+      set({ token: data.token });
+      await SecureStore.setItemAsync(K_TOKEN, data.token);
+    } catch {
+      // Sin red, servidor caído o backend sin el endpoint todavía: se sigue
+      // con el token que ya había. Falla acá NO debe cerrar la sesión; si el
+      // token estuviera realmente vencido, el interceptor de api.ts lo detecta
+      // en el primer request de verdad.
+    }
   },
 }));

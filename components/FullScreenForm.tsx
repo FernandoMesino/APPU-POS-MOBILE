@@ -12,6 +12,7 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from "react-native-safe-area-context";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import InAppKeyboard from "./InAppKeyboard";
+import { useTecladoAdaptativo } from "../hooks/useTecladoAdaptativo";
 
 /**
  * Armazón de formulario a pantalla completa.
@@ -78,6 +79,8 @@ function Contenido({
   children,
 }: Props) {
   const insets = useSafeAreaInsets();
+  // Sin pistola conectada manda el teclado del sistema y este no se dibuja.
+  const { usarPropio } = useTecladoAdaptativo();
 
   // Piso mínimo por si el inset todavía llega en 0 (el provider necesita un
   // frame para medir). +8 de aire para que la ✕ no quede rozando el reloj.
@@ -126,7 +129,7 @@ function Contenido({
         </ScrollView>
 
         {/* Botón principal, siempre visible sobre el teclado */}
-        {!campoTeclado && !ocultarAccion && (
+        {(!campoTeclado || !usarPropio) && !ocultarAccion && (
           <View
             className="px-5 pt-2 border-t border-gray-100"
             // Deja libre el indicador de inicio del iPhone.
@@ -146,7 +149,7 @@ function Contenido({
           </View>
         )}
 
-        {campoTeclado && (
+        {usarPropio && campoTeclado && (
           <InAppKeyboard
             mode={campoTeclado.mode}
             label={campoTeclado.label}

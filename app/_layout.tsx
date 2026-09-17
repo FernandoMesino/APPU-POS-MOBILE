@@ -4,10 +4,16 @@ import { Stack, router } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { useAuthStore } from "../store/authStore";
+import { useKeyboardStore } from "../store/keyboardStore";
 
 export default function RootLayout() {
   const loadToken = useAuthStore((s) => s.loadToken);
   const isLoading = useAuthStore((s) => s.isLoading);
+  const iniciarDeteccion = useKeyboardStore((s) => s.iniciarDeteccion);
+
+  // Detección de pistola lectora: decide, en toda la app, si los campos usan el
+  // teclado del sistema o el propio. Ver store/keyboardStore.
+  useEffect(() => iniciarDeteccion(), []);
 
   useEffect(() => {
     loadToken().then((hasToken) => {

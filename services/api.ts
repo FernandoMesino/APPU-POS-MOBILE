@@ -74,6 +74,12 @@ export type LoginResponse = {
 export const loginRequest = (username: string, password: string) =>
   api.post<LoginResponse>("/auth/login/", { username, password });
 
+// Cambia el token actual por uno nuevo, reiniciando su cuenta regresiva. La app
+// lo llama al arrancar: así la sesión "rueda" y un POS en uso diario no vuelve
+// a ver el login. Requiere un token todavía válido (lo inyecta el interceptor).
+export const refrescarSesion = () =>
+  api.post<{ success: boolean; token: string }>("/auth/refresh/");
+
 // ─── Ventas ──────────────────────────────────────────────────────────────────
 
 export type Producto = {
@@ -106,6 +112,19 @@ export type CartItem = {
   producto: string;
   precio: number;
   cantidad: number;
+  // Campos que agrega el backend al aplicar promociones (ver
+  // calcularPromociones). Viajan tal cual dentro de la orden: los reportes de
+  // Costos y SuperAdmin leen exactamente estos nombres.
+  precio_unitario?: number;
+  precio_unitario_original?: number;
+  precioTotal?: number;
+  descuentoTotal?: number;
+  promocionId?: string | null;
+  unidadesPromocion?: number;
+  promocion_aplicada?: PromocionAplicada | null;
+  combo_aplicado?: ComboAplicado | null;
+  /** true cuando la línea la agregó una promo de "producto gratis". */
+  agregado_por_promocion?: boolean;
 };
 
 export const getProductos = (cafeteria_id: string) =>
@@ -136,6 +155,10 @@ export type ClientePOS = {
   correo: string;
   // De dónde salieron los datos: "cache" | "subsidios" | "app" | "acudientes" | "plaza".
   origen?: string;
+  /** Promociones vigentes del cliente en esta cafetería (suyas + masivas). */
+  promociones?: Promocion[];
+  promocion_resumen?: string;
+  tiene_promociones?: boolean;
 };
 
 // Busca un cliente por su cédula para autocompletar los datos en la factura.
@@ -268,3 +291,169 @@ export const crearOrden = (payload: {
   monto: number;
   caja_codigo: string;
 }) => api.post<{ success: boolean; id_orden: string }>("/ventas/orden/", payload);
+
+// ─── Promociones ─────────────────────────────────────────────────────────────
+
+export type Promocion = {
+  id: string;
+  nombre: string;
+  descripcion: string;
+  tipo_promocion: string;
+  /** Marca que patrocina la promo: a quien el tendero le cobra el descuento. */
+  empresa_patrocinadora: string;
+  /** true = campaña para todos los clientes de la cafetería. */
+  es_masiva: boolean;
+  porcentaje?: number | string;
+  fecha_inicio?: string;
+  fecha_vencimiento?: string;
+  productos?: { id_producto: string; producto: string }[];
+};
+
+export type PromocionAplicada = {
+  id: string;
+  nombre: string;
+  tipo?: string;
+  porcentaje?: number;
+  unidades_con_descuento?: number;
+  descuento_total: number;
+  empresa_patrocinadora?: string;
+};
+
+export type ComboAplicado = {
+  combo_id: string;
+  nombre: string;
+  numero_combos: number;
+  precio_combo: number;
+  descuento_total: number;
+  empresa_patrocinadora?: string;
+};
+
+export type ResumenPromoAplicada = {
+  id: string;
+  nombre: string;
+  empresa_patrocinadora: string;
+  descuento_total: number;
+  productos: string[];
+};
+
+export type CarritoConPromociones = {
+  items: CartItem[];
+  total: number;
+  total_sin_descuento: number;
+  total_descuento: number;
+  promociones_aplicadas: ResumenPromoAplicada[];
+  promociones_disponibles: Promocion[];
+};
+
+/**
+ * Promociones vigentes de la cafetería. Sin `documento` devuelve solo las
+ * masivas (las que puede usar cualquier cliente); con documento, también las
+ * personales de esa persona.
+ */
+export const getPromociones = (cafeteria_id: string, documento?: string) =>
+  api.get<{ promociones: Promocion[]; cantidad: number; masivas: Promocion[] }>(
+    `/promociones/?cafeteria_id=${encodeURIComponent(cafeteria_id)}` +
+      (documento ? `&documento=${encodeURIComponent(documento)}` : "")
+  );
+
+/**
+ * Manda el carrito y devuelve el carrito **ya con los descuentos aplicados**.
+ *
+ * El cálculo vive en el backend a propósito: el POS web tiene el mismo motor en
+ * JavaScript y mantener dos copias de esas reglas (combos, cupos, 2x1...) las
+ * desincronizaría a la primera promoción nueva.
+ */
+export const calcularPromociones = (payload: {
+  cafeteria_id: string;
+  documento?: string;
+  carrito: { id_producto: string; producto: string; precio: number; cantidad: number }[];
+}) => api.post<CarritoConPromociones>("/promociones/calcular/", payload);
+
+// ─── Cuentas por cobrar del tendero ──────────────────────────────────────────
+
+export type PromoPorCobrar = {
+  promocion_id: string;
+  nombre: string;
+  tipo: string;
+  alcance: string;
+  total: number;
+  usos: number;
+  ultima_fecha: string;
+};
+
+export type EmpresaPorCobrar = {
+  empresa: string;
+  /** false = no hay marca detrás; el descuento lo asumió la cafetería. */
+  patrocinada: boolean;
+  total: number;
+  usos: number;
+  clientes: number;
+  promociones: PromoPorCobrar[];
+};
+
+export type CuentaPorCobrar = {
+  empresas: EmpresaPorCobrar[];
+  total: number;
+  total_usos: number;
+  total_empresas: number;
+  solo_pendientes: boolean;
+  fecha_inicio: string;
+  fecha_fin: string;
+};
+
+export type FilaPorCobrar = {
+  id: string;
+  fecha: string;
+  id_orden: string;
+  cliente: string;
+  documento: string;
+  producto: string;
+  cantidad: number;
+  promocion: string;
+  promocion_id: string;
+  empresa: string;
+  valor_real: number;
+  descuento: number;
+  estado_pago: string;
+};
+
+/** Cuánto le debe cada empresa al tendero por los descuentos que ya dio. */
+export const getCuentaPorCobrar = (params: {
+  cafeteria_id: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  incluir_pagados?: boolean;
+}) => {
+  const q = new URLSearchParams({ cafeteria_id: params.cafeteria_id });
+  if (params.fecha_inicio) q.set("fecha_inicio", params.fecha_inicio);
+  if (params.fecha_fin) q.set("fecha_fin", params.fecha_fin);
+  if (params.incluir_pagados) q.set("incluir_pagados", "1");
+  return api.get<CuentaPorCobrar>(`/promociones/por-cobrar/?${q.toString()}`);
+};
+
+/** Las ventas, una por una, que componen lo que debe una empresa. */
+export const getDetallePorCobrar = (params: {
+  cafeteria_id: string;
+  empresa?: string;
+  promocion_id?: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  incluir_pagados?: boolean;
+}) => {
+  const q = new URLSearchParams({ cafeteria_id: params.cafeteria_id });
+  if (params.empresa) q.set("empresa", params.empresa);
+  if (params.promocion_id) q.set("promocion_id", params.promocion_id);
+  if (params.fecha_inicio) q.set("fecha_inicio", params.fecha_inicio);
+  if (params.fecha_fin) q.set("fecha_fin", params.fecha_fin);
+  if (params.incluir_pagados) q.set("incluir_pagados", "1");
+  return api.get<{ filas: FilaPorCobrar[]; total: number; cantidad: number }>(
+    `/promociones/por-cobrar/detalle/?${q.toString()}`
+  );
+};
+
+/** Marca como cobrado lo que la empresa ya le reembolsó al tendero. */
+export const marcarCobrado = (uso_ids: string[], pagado = true) =>
+  api.post<{ success: boolean; actualizados: number; estado: string }>(
+    "/promociones/por-cobrar/marcar/",
+    { uso_ids, pagado }
+  );

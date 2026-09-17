@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import InAppKeyboard from "./InAppKeyboard";
 import { actualizarPrecioProducto, type Producto } from "../services/api";
+import { useTecladoAdaptativo } from "../hooks/useTecladoAdaptativo";
 
 type Props = {
   producto: Producto | null;
@@ -22,16 +23,19 @@ type Props = {
 export default function EditPriceModal({ producto, onClose, onSaved }: Props) {
   const [precio, setPrecio] = useState("");
   const [loading, setLoading] = useState(false);
-  // `autoFocus` en el input abre el teclado propio de entrada, que es lo que
-  // se espera al tocar "editar precio": teclear el número y listo.
-  const [tecladoAbierto, setTecladoAbierto] = useState(true);
+  // Teclado del sistema si no hay pistola conectada; el propio si la hay.
+  const { usarPropio, propsCampo } = useTecladoAdaptativo();
+  // Con pistola conectada el teclado propio se abre de entrada, que es lo que
+  // se espera al tocar "editar precio": teclear el número y listo. Sin pistola
+  // lo abre `autoFocus` del input, que invoca al del sistema.
+  const [tecladoAbierto, setTecladoAbierto] = useState(false);
 
   useEffect(() => {
     if (producto) {
       setPrecio(String(producto.precio ?? ""));
-      setTecladoAbierto(true);
+      setTecladoAbierto(usarPropio);
     }
-  }, [producto]);
+  }, [producto, usarPropio]);
 
   const handleGuardar = async () => {
     if (!producto) return;
@@ -90,12 +94,11 @@ export default function EditPriceModal({ producto, onClose, onSaved }: Props) {
                 placeholderTextColor="#9ca3af"
                 // Teclado propio: con la pistola conectada Android no muestra
                 // el del sistema. Ver components/InAppKeyboard.tsx.
-                showSoftInputOnFocus={false}
-                onFocus={() => setTecladoAbierto(true)}
+                {...propsCampo(() => setTecladoAbierto(true))}
               />
             </View>
 
-            {tecladoAbierto && (
+            {usarPropio && tecladoAbierto && (
               <View className="-mx-6 mb-4">
                 <InAppKeyboard
                   mode="numeric"

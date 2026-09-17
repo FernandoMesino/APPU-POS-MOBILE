@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   Image,
   Keyboard,
+  Platform,
   StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,7 +17,6 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 // del paquete (~4 MB) aunque solo se use una.
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { router } from "expo-router";
-import InAppKeyboard from "../components/InAppKeyboard";
 import { useAuthStore } from "../store/authStore";
 import { loginRequest } from "../services/api";
 import { abrirLegal } from "../services/legal";
@@ -31,32 +31,24 @@ export default function LoginScreen() {
   const passwordRef = useRef<TextInput>(null);
   const { setAuth } = useAuthStore();
 
-  // Teclado propio: la pistola lectora se empareja como teclado físico HID y
-  // Android oculta el teclado en pantalla mientras esté conectada. Con este,
-  // se puede escribir y escanear a la vez, sin tocar ajustes del sistema.
-  type Campo = "username" | "password";
-  const [campoActivo, setCampoActivo] = useState<Campo | null>(null);
+  // El login usa el teclado del SISTEMA, no el propio de la app: acá no hay
+  // pistola lectora conectada todavía y el teclado nativo es más cómodo
+  // (autocompletado, gestor de contraseñas, dictado).
+  // Se sigue la visibilidad del teclado solo para encoger el logo y liberar
+  // alto; el resto del POS sí usa InAppKeyboard por el lector HID.
+  const [tecladoAbierto, setTecladoAbierto] = useState(false);
 
-  const valorCampo: Record<Campo, string> = { username, password };
-  const setterCampo: Record<Campo, (v: string) => void> = {
-    username: (v) => {
-      setUsername(v);
-      setUserError("");
-    },
-    password: (v) => {
-      setPassword(v);
-      setPassError("");
-    },
-  };
-  const etiquetaCampo: Record<Campo, string> = {
-    username: "Usuario",
-    password: "Contraseña",
-  };
-
-  const abrirTeclado = (campo: Campo) => {
-    Keyboard.dismiss();
-    setCampoActivo(campo);
-  };
+  useEffect(() => {
+    // iOS avisa antes de animar (will*), Android solo después (did*).
+    const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const sl = Keyboard.addListener(showEvt, () => setTecladoAbierto(true));
+    const hl = Keyboard.addListener(hideEvt, () => setTecladoAbierto(false));
+    return () => {
+      sl.remove();
+      hl.remove();
+    };
+  }, []);
 
   const handleLogin = async () => {
     let valid = true;
@@ -91,13 +83,11 @@ export default function LoginScreen() {
     }
   };
 
-  const tecladoAbierto = campoActivo !== null;
 
   return (
-    // edges solo arriba: el borde inferior lo maneja el teclado propio con su
-    // propio inset. Con "bottom" acá quedaba una franja morada bajo el teclado
-    // y el espacio de seguridad contado dos veces.
-    <SafeAreaView edges={["top"]} style={styles.safe}>
+    // Con el teclado del sistema, KeyboardAwareScrollView ya reserva el espacio
+    // de abajo; el safe-area inferior lo aporta el propio SafeAreaView.
+    <SafeAreaView edges={["top", "bottom"]} style={styles.safe}>
       {/* Ojo: NO envolver esto en <TouchableWithoutFeedback onPress={Keyboard.dismiss}>.
           El padre captura el toque de los TextInput y cierra el teclado antes de
           que el input tome el foco → no se puede escribir. Para cerrar el
@@ -144,8 +134,8 @@ export default function LoginScreen() {
                 returnKeyType="next"
                 onSubmitEditing={() => passwordRef.current?.focus()}
                 blurOnSubmit={false}
-                showSoftInputOnFocus={false}
-                onFocus={() => abrirTeclado("username")}
+                textContentType="username"
+                autoComplete="username"
               />
             </View>
             {!!userError && <Text style={styles.errorText}>{userError}</Text>}
@@ -173,8 +163,10 @@ export default function LoginScreen() {
                 secureTextEntry={secureText}
                 returnKeyType="done"
                 onSubmitEditing={handleLogin}
-                showSoftInputOnFocus={false}
-                onFocus={() => abrirTeclado("password")}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="password"
+                autoComplete="password"
               />
               <TouchableOpacity
                 onPress={() => setSecureText(!secureText)}
@@ -220,18 +212,6 @@ export default function LoginScreen() {
           )}
       </KeyboardAwareScrollView>
 
-      {/* Teclado propio, anclado abajo. Reemplaza al del sistema, que Android
-          oculta mientras la pistola lectora esté emparejada. */}
-      {campoActivo && (
-        <InAppKeyboard
-          mode="text"
-          variant="oscuro"
-          label={etiquetaCampo[campoActivo]}
-          value={valorCampo[campoActivo]}
-          onChange={setterCampo[campoActivo]}
-          onClose={() => setCampoActivo(null)}
-        />
-      )}
     </SafeAreaView>
   );
 }

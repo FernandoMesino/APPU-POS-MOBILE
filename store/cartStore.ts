@@ -1,12 +1,10 @@
 import { create } from "zustand";
-import type { Producto } from "../services/api";
+import type { CartItem, Producto } from "../services/api";
 
-type CartItem = {
-  id_producto: string;
-  producto: string;
-  precio: number;
-  cantidad: number;
-};
+// `CartItem` vive en services/api porque es también la forma de cada línea al
+// crear la orden: ahí se le suman los campos de promoción que devuelve el
+// backend (descuentoTotal, promocionId...). El carrito de acá solo llena los
+// cuatro básicos; el resto los agrega el checkout al aplicar promociones.
 
 type CartState = {
   items: CartItem[];

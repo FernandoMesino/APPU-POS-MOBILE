@@ -27,6 +27,9 @@
     },
     "production": {
       "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://appu.store/api/mobile",
         "EXPO_PUBLIC_ENV": "production"
@@ -37,6 +40,9 @@
     "production": {
       "ios": {
         "appleId": "danielpinedasalazar19@gmail.com"
+      },
+      "android": {
+        "track": "internal"
       }
     }
   }

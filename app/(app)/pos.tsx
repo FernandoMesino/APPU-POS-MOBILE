@@ -22,9 +22,11 @@ import {
   getProductos,
   getCajas,
   getOrdenesDia,
+  getPromociones,
   type Producto,
   type Caja,
   type OrdenDia,
+  type Promocion,
 } from "../../services/api";
 import ProductCard from "../../components/ProductCard";
 import CartTab from "../../components/CartTab";
@@ -34,6 +36,7 @@ import NewCajaModal from "../../components/NewCajaModal";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import InAppKeyboard from "../../components/InAppKeyboard";
 import CreateProductoScreen from "../../components/CreateProductoScreen";
+import PorCobrarScreen from "../../components/PorCobrarScreen";
 import { abrirLegal } from "../../services/legal";
 
 type Tab = "ventas" | "carrito" | "caja";
@@ -68,6 +71,12 @@ export default function PosScreen() {
   const [profileMenuVisible, setProfileMenuVisible] = useState(false);
   const [nuevaCajaVisible, setNuevaCajaVisible] = useState(false);
   const [nuevoProductoVisible, setNuevoProductoVisible] = useState(false);
+  const [porCobrarVisible, setPorCobrarVisible] = useState(false);
+
+  // Campañas masivas vigentes de la cafetería: las puede usar cualquier
+  // cliente, así que se anuncian en VENTAS sin necesidad de elegir a nadie.
+  // Las personales del cliente se resuelven al facturar (ver CheckoutModal).
+  const [promosMasivas, setPromosMasivas] = useState<Promocion[]>([]);
 
   // ─── Pistola lectora (Bluetooth HID) ────────────────────────────────────────
   // La pistola se comporta como un teclado: "teclea" el código y manda un Enter.
@@ -86,7 +95,8 @@ export default function PosScreen() {
     cajaMenuVisible ||
     profileMenuVisible ||
     nuevaCajaVisible ||
-    nuevoProductoVisible;
+    nuevoProductoVisible ||
+    porCobrarVisible;
 
   // El escáner está activo solo en VENTAS, sin modales abiertos, ya cargado, y
   // mientras el cajero no esté escribiendo manualmente en el buscador.
@@ -199,13 +209,17 @@ export default function PosScreen() {
     if (!selectedCafeteria) return;
     setLoading(true);
     try {
-      const [prodRes, cajaRes] = await Promise.all([
+      const [prodRes, cajaRes, promoRes] = await Promise.all([
         getProductos(selectedCafeteria.id),
         getCajas(selectedCafeteria.id),
+        // Sin cédula devuelve solo las masivas. Que falle no debe impedir
+        // vender, así que se degrada a lista vacía.
+        getPromociones(selectedCafeteria.id).catch(() => null),
       ]);
       setProductos(prodRes.data.productos);
       setCategorias(prodRes.data.categorias);
       setCajas(cajaRes.data.cajas);
+      setPromosMasivas(promoRes?.data?.masivas ?? []);
       if (cajaRes.data.cajas.length > 0) setCajaActiva(cajaRes.data.cajas[0]);
     } catch (err: any) {
       // Un 401 significa sesión vencida: el interceptor de api.ts ya desloguea
@@ -280,6 +294,31 @@ export default function PosScreen() {
             autoCapitalize="none"
             style={{ position: "absolute", width: 1, height: 1, opacity: 0 }}
           />
+        )}
+
+        {/* Campañas vigentes para toda la cafetería: se aplican solas al
+            facturar, pero el cajero necesita saber que existen para poder
+            ofrecerlas. */}
+        {promosMasivas.length > 0 && (
+          <View className="mx-4 mt-3 bg-appu-blue/10 border border-appu-blue/20 rounded-2xl px-4 py-3">
+            <View className="flex-row items-center mb-1">
+              <Text className="text-xs">📣</Text>
+              <Text className="text-appu-blue text-xs font-bold uppercase tracking-wider ml-1.5">
+                Promociones activas
+              </Text>
+            </View>
+            {promosMasivas.slice(0, 3).map((pr) => (
+              <Text key={pr.id} className="text-appu-text text-xs mb-0.5" numberOfLines={2}>
+                • {pr.descripcion || pr.nombre}
+                {pr.empresa_patrocinadora ? ` — ${pr.empresa_patrocinadora}` : ""}
+              </Text>
+            ))}
+            {promosMasivas.length > 3 && (
+              <Text className="text-gray-500 text-xs mt-0.5">
+                y {promosMasivas.length - 3} más
+              </Text>
+            )}
+          </View>
         )}
 
         {/* Búsqueda */}
@@ -697,6 +736,14 @@ export default function PosScreen() {
         onCreated={handleProductoCreado}
       />
 
+      {/* Cuánto le deben al comercio por las promociones que ya aplicó */}
+      <PorCobrarScreen
+        visible={porCobrarVisible}
+        cafeteriaId={selectedCafeteria?.id ?? null}
+        cafeteriaNombre={selectedCafeteria?.nombre}
+        onClose={() => setPorCobrarVisible(false)}
+      />
+
       {/* Dropdown perfil / cerrar sesión */}
       <Modal
         visible={profileMenuVisible}
@@ -744,10 +791,25 @@ export default function PosScreen() {
                 setProfileMenuVisible(false);
                 setNuevaCajaVisible(true);
               }}
-              className="px-4 py-3 flex-row items-center active:bg-gray-50 border-b border-gray-100"
+              className="px-4 py-3 flex-row items-center active:bg-gray-50"
             >
               <Ionicons name="albums-outline" size={19} color="#2f2c59" />
               <Text className="text-appu-text font-semibold ml-3">Crear caja</Text>
+            </TouchableOpacity>
+
+            {/* Estado de cuenta de las promociones: cuánto le deben al comercio
+                las marcas que las patrocinan. */}
+            <TouchableOpacity
+              onPress={() => {
+                setProfileMenuVisible(false);
+                setPorCobrarVisible(true);
+              }}
+              className="px-4 py-3 flex-row items-center active:bg-gray-50 border-b border-gray-100"
+            >
+              <Ionicons name="cash-outline" size={19} color="#22c55e" />
+              <Text className="text-appu-text font-semibold ml-3">
+                Promociones por cobrar
+              </Text>
             </TouchableOpacity>
 
             {/* Requisito de Apple (5.1.1(i)): la política de privacidad tiene

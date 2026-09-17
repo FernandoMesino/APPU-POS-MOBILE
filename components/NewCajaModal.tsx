@@ -3,6 +3,7 @@ import { View, Text, TextInput, Alert, Keyboard } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import FullScreenForm, { CampoFormulario, type CampoTeclado } from "./FullScreenForm";
 import { crearCaja, type Caja } from "../services/api";
+import { useTecladoAdaptativo } from "../hooks/useTecladoAdaptativo";
 
 type Props = {
   visible: boolean;
@@ -31,6 +32,8 @@ export default function NewCajaModal({
   const [codigo, setCodigo] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [campoActivo, setCampoActivo] = useState<Campo | null>(null);
+  // Teclado del sistema si no hay pistola conectada; el propio si la hay.
+  const { usarPropio, propsCampo } = useTecladoAdaptativo();
 
   const valorCampo: Record<Campo, string> = { nombre, codigo };
   const setterCampo: Record<Campo, (v: string) => void> = {
@@ -106,8 +109,7 @@ export default function NewCajaModal({
           placeholderTextColor="#9ca3af"
           value={nombre}
           onChangeText={setNombre}
-          showSoftInputOnFocus={false}
-          onFocus={() => abrirTeclado("nombre")}
+          {...propsCampo(() => abrirTeclado("nombre"))}
         />
       </CampoFormulario>
 
@@ -122,8 +124,7 @@ export default function NewCajaModal({
           value={codigo}
           onChangeText={setCodigo}
           autoCapitalize="characters"
-          showSoftInputOnFocus={false}
-          onFocus={() => abrirTeclado("codigo")}
+          {...propsCampo(() => abrirTeclado("codigo"))}
         />
       </CampoFormulario>
 
